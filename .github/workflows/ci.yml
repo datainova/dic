@@ -8,8 +8,10 @@ on:
 
 jobs:
   build:
-    name: Install & Build (frontend/backend/worker)
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20]
 
     steps:
       - name: Checkout
@@ -18,25 +20,67 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node-version }}
 
-      - name: Backend - install & build
-        working-directory: ./backend
-        run: |
-          npm ci
-          npm run build
+      - name: Cache frontend node_modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: frontend-${{ matrix.node-version }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            frontend-${{ matrix.node-version }}-
 
-      - name: Worker - install & tsc
-        working-directory: ./worker
-        run: |
-          npm ci
-          npx tsc -p .
-
-      - name: Frontend - install & build
+      - name: Frontend - install deps
         working-directory: ./frontend
-        run: |
-          npm ci
-          npm run build
+        run: npm ci
 
-      - name: Completed
-        run: echo "CI finished"
+      - name: Frontend - lint
+        working-directory: ./frontend
+        run: npm run lint
+
+      - name: Frontend - test
+        working-directory: ./frontend
+        run: npm run test -- --run
+
+      - name: Cache backend node_modules
+        uses: actions/cache@v4
+        with:
+          path: backend/node_modules
+          key: backend-${{ matrix.node-version }}-${{ hashFiles('backend/package-lock.json') }}
+          restore-keys: |
+            backend-${{ matrix.node-version }}-
+
+      - name: Backend - install deps
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Backend - lint
+        working-directory: ./backend
+        run: npm run lint
+
+      - name: Backend - build
+        working-directory: ./backend
+        run: npm run build
+
+      - name: Cache worker node_modules
+        uses: actions/cache@v4
+        with:
+          path: worker/node_modules
+          key: worker-${{ matrix.node-version }}-${{ hashFiles('worker/package-lock.json') }}
+          restore-keys: |
+            worker-${{ matrix.node-version }}-
+
+      - name: Worker - install deps
+        working-directory: ./worker
+        run: npm ci
+
+      - name: Worker - lint
+        working-directory: ./worker
+        run: npm run lint
+
+      - name: Worker - tsc
+        working-directory: ./worker
+        run: npx tsc -p .
+
+      - name: CI completed
+        run: echo "CI finished on Node ${{ matrix.node-version }}"
