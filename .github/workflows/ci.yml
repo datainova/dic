@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, config-init ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Install & Build (frontend/backend/worker)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Backend - install & build
+        working-directory: ./backend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Worker - install & tsc
+        working-directory: ./worker
+        run: |
+          npm ci
+          npx tsc -p .
+
+      - name: Frontend - install & build
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Completed
+        run: echo "CI finished"
