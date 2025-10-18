@@ -1,0 +1,17 @@
+{
+  "name": "data-inova-worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/worker.ts"
+  },
+  "dependencies": {
+    "ioredis": "^5.3.2",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.2",
+    "ts-node-dev": "^2.0.0",
+    "@types/node": "^20.5.1"
+  }
+}
