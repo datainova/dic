@@ -12,6 +12,10 @@ module.exports = {
     react: { version: 'detect' }
   },
   rules: {
-    'no-console': 'off'
+    'no-console': 'warn',
+    'eqeqeq': 'error',
+    'curly': 'error',
+    '@typescript-eslint/no-unused-vars': ['warn', { 'argsIgnorePattern': '^_' }],
+    'react/react-in-jsx-scope': 'off'
   }
 }

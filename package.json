@@ -1,0 +1,9 @@
+{
+  "name": "dic-root",
+  "private": true,
+  "scripts": {
+    "lint": "npm --prefix frontend run lint && npm --prefix backend run lint && npm --prefix worker run lint",
+    "test": "npm --prefix frontend run test -- && npm --prefix backend run test && npm --prefix worker run test",
+    "build": "npm --prefix frontend run build && npm --prefix backend run build && echo 'Worker build skipped'"
+  }
+}

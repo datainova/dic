@@ -1,5 +1,7 @@
 # DataInova Connect (DIC)
 
+![CI](https://github.com/datainova/dic/actions/workflows/ci.yml/badge.svg)
+
 DataInova Connect é uma plataforma SaaS de Indicadores Inteligentes. Este repositório é um monorepo simples com três camadas principais:
 
 - `frontend/` — interface do usuário (React + Vite + Tailwind)
