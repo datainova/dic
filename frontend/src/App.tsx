@@ -72,6 +72,10 @@ export default function App(){
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [devLink, setDevLink] = useState<string | null>(null)
+  const [loginMode, setLoginMode] = useState<'link'|'password'>('link')
+  const [password, setPassword] = useState('')
+  const [pwdNew, setPwdNew] = useState('')
+  const [pwdCurrent, setPwdCurrent] = useState('')
 
   useEffect(() => {
     // clear any previous state when switching mode
@@ -102,6 +106,47 @@ export default function App(){
     }
   }
 
+  async function submitLoginPassword(e: React.FormEvent) {
+    e.preventDefault()
+    setMessage('')
+    setLoading(true)
+    try {
+      const res = await fetch(`${apiBase}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        localStorage.setItem('access_token', data.access_token)
+        localStorage.setItem('refresh_token', data.refresh_token)
+        setMessage('Login realizado com sucesso. Você já pode carregar o perfil.')
+      } else {
+        setMessage(`Erro: ${data.error || 'Falha no login'}`)
+      }
+    } finally { setLoading(false) }
+  }
+
+  async function submitSetPassword(e: React.FormEvent) {
+    e.preventDefault()
+    setMessage('')
+    setLoading(true)
+    try {
+      const token = localStorage.getItem('access_token')
+      if (!token) { setMessage('Você precisa estar autenticado.'); return }
+      const body: any = { password: pwdNew }
+      if (pwdCurrent) body.current_password = pwdCurrent
+      const res = await fetch(`${apiBase}/auth/set-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body)
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) setMessage('Senha definida com sucesso. Você já pode entrar usando e-mail e senha.')
+      else setMessage(`Erro: ${data.error || 'Falha ao definir senha'}`)
+    } finally { setLoading(false) }
+  }
+
   async function loadProfile() {
     const p = await me()
     setProfile(p)
@@ -124,16 +169,40 @@ export default function App(){
               <button onClick={() => setMode('register')} className={`text-sm px-3 py-1 rounded ${mode==='register' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}>Registrar</button>
               <button onClick={() => setMode('login')} className={`text-sm px-3 py-1 rounded ${mode==='login' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}>Entrar</button>
             </div>
-            <form onSubmit={submitEmail} className="space-y-4">
-              <label className="block text-sm">
-                <span className="text-slate-700">E-mail</span>
-                <input value={email} onChange={e=>setEmail(e.target.value)} type="email" required placeholder="voce@empresa.com"
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
-              </label>
-              <button disabled={loading} type="submit" className="w-full rounded-md bg-brand-600 text-white py-2 hover:bg-brand-700 disabled:opacity-60">
-                {loading ? 'Enviando...' : (mode==='register' ? 'Enviar link de cadastro' : 'Enviar link de acesso')}
-              </button>
-            </form>
+            <div className="space-y-1 mb-2" hidden={mode!=='login'}>
+              <div className="flex gap-2">
+                <button onClick={()=>setLoginMode('link')} className={`text-xs px-2 py-1 rounded ${loginMode==='link'?'bg-slate-200':'hover:bg-slate-100'}`}>Por link</button>
+                <button onClick={()=>setLoginMode('password')} className={`text-xs px-2 py-1 rounded ${loginMode==='password'?'bg-slate-200':'hover:bg-slate-100'}`}>Com senha</button>
+              </div>
+            </div>
+            {loginMode === 'password' && mode==='login' ? (
+              <form onSubmit={submitLoginPassword} className="space-y-4">
+                <label className="block text-sm">
+                  <span className="text-slate-700">E-mail</span>
+                  <input value={email} onChange={e=>setEmail(e.target.value)} type="email" required placeholder="voce@empresa.com"
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                </label>
+                <label className="block text-sm">
+                  <span className="text-slate-700">Senha</span>
+                  <input value={password} onChange={e=>setPassword(e.target.value)} type="password" required placeholder="Sua senha"
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                </label>
+                <button disabled={loading} type="submit" className="w-full rounded-md bg-brand-600 text-white py-2 hover:bg-brand-700 disabled:opacity-60">
+                  {loading ? 'Entrando...' : 'Entrar'}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={submitEmail} className="space-y-4">
+                <label className="block text-sm">
+                  <span className="text-slate-700">E-mail</span>
+                  <input value={email} onChange={e=>setEmail(e.target.value)} type="email" required placeholder="voce@empresa.com"
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                </label>
+                <button disabled={loading} type="submit" className="w-full rounded-md bg-brand-600 text-white py-2 hover:bg-brand-700 disabled:opacity-60">
+                  {loading ? 'Enviando...' : (mode==='register' ? 'Enviar link de cadastro' : 'Enviar link de acesso')}
+                </button>
+              </form>
+            )}
             {message && <p className="text-sm text-slate-600 mt-4">{message}</p>}
             {devLink && (
               <a className="mt-3 inline-flex items-center text-sm text-brand-700 hover:underline" href={devLink}>
@@ -150,6 +219,22 @@ export default function App(){
             <div className="flex items-center gap-3">
               <button onClick={loadProfile} className="rounded-md bg-slate-900 text-white px-4 py-2 hover:bg-slate-800">Carregar perfil</button>
               <button onClick={() => { localStorage.clear(); location.href = '/' }} className="rounded-md border border-slate-300 px-4 py-2 text-slate-700 hover:bg-slate-50">Sair</button>
+            </div>
+            <div className="mt-6 bg-white rounded-xl shadow ring-1 ring-black/5 p-4 max-w-md">
+              <h3 className="font-medium mb-2">Definir/alterar senha</h3>
+              <form onSubmit={submitSetPassword} className="space-y-3">
+                <label className="block text-sm">
+                  <span className="text-slate-700">Senha atual (opcional)</span>
+                  <input value={pwdCurrent} onChange={e=>setPwdCurrent(e.target.value)} type="password" placeholder="••••••••"
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                </label>
+                <label className="block text-sm">
+                  <span className="text-slate-700">Nova senha</span>
+                  <input value={pwdNew} onChange={e=>setPwdNew(e.target.value)} type="password" required placeholder="mínimo 8 caracteres"
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                </label>
+                <button disabled={loading} className="rounded-md bg-brand-600 text-white px-4 py-2 hover:bg-brand-700 disabled:opacity-60">Salvar senha</button>
+              </form>
             </div>
             {profile && (
               <div className="mt-6 grid md:grid-cols-2 gap-4">

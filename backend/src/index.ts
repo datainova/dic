@@ -4,6 +4,8 @@ import { Pool } from 'pg'
 import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
 import { URL } from 'url'
+import { sendEmailLink } from './email'
+import bcrypt from 'bcrypt'
 
 dotenv.config()
 
@@ -28,6 +30,19 @@ const pool = new Pool({ connectionString: connStr, ssl: useSSL ? { rejectUnautho
 // JWT utils (RS256 if configured, otherwise HS256 dev secret)
 const hasRSKeys = !!(process.env.JWT_PRIVATE_KEY && process.env.JWT_PUBLIC_KEY)
 const HS_SECRET = process.env.JWT_SECRET || 'dev-insecure-secret'
+const PASSWORD_PEPPER = process.env.PASSWORD_PEPPER || ''
+
+async function hashPassword(plain: string) {
+  const salted = plain + PASSWORD_PEPPER
+  const saltRounds = 12
+  return bcrypt.hash(salted, saltRounds)
+}
+
+async function verifyPassword(plain: string, hash: string | null) {
+  if (!hash) return false
+  const salted = plain + PASSWORD_PEPPER
+  try { return await bcrypt.compare(salted, hash) } catch { return false }
+}
 
 function signJWT(payload: any, opts?: jwt.SignOptions) {
   if (hasRSKeys) {
@@ -133,10 +148,7 @@ async function issueSessionAndTokens(client: any, userId: string, tenantId: stri
   return { access_token: access, refresh_token: refresh, expires_in: 900 }
 }
 
-async function sendEmailLink(email: string, url: string) {
-  // In dev, just log to server console. You can integrate SMTP later.
-  console.log(`\n[Email] To: ${email}\nLink: ${url}\n`)
-}
+// email sending handled by src/email.ts
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
 
@@ -334,9 +346,98 @@ app.get('/me', async (req, res) => {
   }
 })
 
+// Set or change password (authenticated)
+// Body: { password: string, current_password?: string }
+app.post('/auth/set-password', async (req, res) => {
+  const auth = (req.headers['authorization'] || '').toString()
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+  if (!token) return res.status(401).json({ error: 'NO_TOKEN' })
+  let payload: any
+  try { payload = verifyJWT(token) } catch { return res.status(401).json({ error: 'TOKEN_INVALID' }) }
+  const { sub: userId, ten: tenantId } = payload
+  const { password, current_password } = req.body || {}
+  if (!password || password.length < 8) return res.status(400).json({ error: 'WEAK_PASSWORD' })
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId])
+    const ures = await client.query(`SELECT email FROM users WHERE id = $1`, [userId])
+    if (!ures.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'USER_NOT_FOUND' }) }
+    const email = ures.rows[0].email
+
+    const ires = await client.query(`SELECT secret_hash FROM identities WHERE provider='local' AND provider_uid=$1`, [email])
+    if (ires.rowCount && ires.rows[0].secret_hash) {
+      if (!current_password) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'CURRENT_PASSWORD_REQUIRED' }) }
+      const ok = await verifyPassword(current_password, ires.rows[0].secret_hash)
+      if (!ok) { await client.query('ROLLBACK'); return res.status(401).json({ error: 'INVALID_CURRENT_PASSWORD' }) }
+    }
+
+    const newHash = await hashPassword(password)
+    await client.query(
+      `INSERT INTO identities(user_id, provider, provider_uid, secret_hash)
+       VALUES ($1,'local',$2,$3)
+       ON CONFLICT (provider, provider_uid) DO UPDATE SET user_id = EXCLUDED.user_id, secret_hash = EXCLUDED.secret_hash`,
+      [userId, email, newHash]
+    )
+    await client.query('COMMIT')
+    return res.json({ ok: true })
+  } catch (e) {
+    await client.query('ROLLBACK')
+    console.error('set-password error', e)
+    return res.status(500).json({ error: 'SET_PASSWORD_FAILED' })
+  } finally {
+    client.release()
+  }
+})
+
+// Login with email + password
+// Body: { email, password }
+app.post('/auth/login', async (req, res) => {
+  const email = (req.body?.email || '').toString().trim().toLowerCase()
+  const password = (req.body?.password || '').toString()
+  if (!email || !password) return res.status(400).json({ error: 'EMAIL_AND_PASSWORD_REQUIRED' })
+  const client = await pool.connect()
+  try {
+    const u = await client.query(`SELECT id, is_active FROM users WHERE email = $1`, [email])
+    if (!u.rowCount) return res.status(401).json({ error: 'INVALID_CREDENTIALS' })
+    const userId = u.rows[0].id
+    if (!u.rows[0].is_active) return res.status(403).json({ error: 'USER_DISABLED' })
+    const idt = await client.query(`SELECT secret_hash FROM identities WHERE provider='local' AND provider_uid=$1`, [email])
+    if (!idt.rowCount || !idt.rows[0].secret_hash) return res.status(409).json({ error: 'PASSWORD_NOT_SET' })
+    const ok = await verifyPassword(password, idt.rows[0].secret_hash)
+    if (!ok) return res.status(401).json({ error: 'INVALID_CREDENTIALS' })
+
+    const ut = await client.query(`SELECT tenant_id FROM user_tenants WHERE user_id=$1 ORDER BY tenant_id LIMIT 1`, [userId])
+    if (!ut.rowCount) return res.status(409).json({ error: 'USER_NO_TENANT' })
+    const tenantId = ut.rows[0].tenant_id
+    await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId])
+    const tokens = await issueSessionAndTokens(client, userId, tenantId)
+    return res.json(tokens)
+  } catch (e) {
+    console.error('login error', e)
+    return res.status(500).json({ error: 'LOGIN_FAILED' })
+  } finally {
+    client.release()
+  }
+})
+
 const PORT = process.env.PORT || 4000
 if (require.main === module) {
-	app.listen(PORT, () => console.log(`Backend listening on ${PORT}`))
+	app.listen(PORT, () => {
+		console.log(`Backend listening on ${PORT}`)
+		if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+			console.log('[Email] SMTP not configured; using dev console fallback. Set SMTP_HOST/SMTP_USER/SMTP_PASS to send real emails.')
+		}
+		else {
+			// try dynamic import to surface missing dep early
+			import('nodemailer').then(() => {
+				console.log('[Email] SMTP configured and nodemailer available.')
+			}).catch(() => {
+				console.log('[Email] SMTP configured but nodemailer not installed. Run: npm --prefix backend install nodemailer --omit=dev')
+			})
+		}
+	})
 }
 
 export default app

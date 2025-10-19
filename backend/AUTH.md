@@ -28,10 +28,22 @@ Endpoints
   - Header: Authorization: Bearer <access_token>
   - Retorna: { user, tenant, roles }
 
+- POST /auth/set-password (protegido)
+  - Body: { password: string, current_password?: string }
+  - Se o usuário já tiver senha, exige current_password.
+  - Persiste hash (bcrypt + pepper) em identities.secret_hash.
+  - Response 200: { ok: true }
+
+- POST /auth/login (email + senha)
+  - Body: { email, password }
+  - Valida hash e emite tokens (mesma estrutura do verify-email).
+  - Erros: 401 INVALID_CREDENTIALS | 409 PASSWORD_NOT_SET | 403 USER_DISABLED
+
 Segurança e Tenancy
 - RLS: rotas autenticadas executam `SET app.current_tenant` com `ten` do JWT.
 - Tokens: access_token ~15m; refresh_token persistido com hash (sha256) em refresh_tokens.
 - E-mail: em dev, o “envio” é logado no console; em prod, configurar SMTP (Nodemailer) ou provedor externo.
+- Senhas: bcrypt + pepper (`PASSWORD_PEPPER`); recomenda-se Argon2id em produção.
 
 Configuração
 - DATABASE_URL=postgres://...
@@ -39,6 +51,14 @@ Configuração
 - JWT_PRIVATE_KEY=... (PEM) [opcional em dev]
 - JWT_PUBLIC_KEY=... (PEM)  [opcional em dev]
 - (dev fallback) JWT_SECRET=dev-insecure-secret
+- E-mail (SMTP) — para envio real dos links:
+  - SMTP_HOST, SMTP_PORT (465/587), SMTP_SECURE=(true|false)
+  - SMTP_USER, SMTP_PASS
+  - EMAIL_FROM="DataInova <no-reply@dominio>"
+  - Dica: use Mailtrap para sandbox (host=sandbox.smtp.mailtrap.io, port=2525, secure=false).
+- Se SMTP não estiver configurado, o backend usa fallback e apenas registra o link no console/dev_link.
+- Senhas
+  - PASSWORD_PEPPER=... (pepper global gerenciado por Secrets Manager/KMS)
 
 Fluxo de Onboarding (Free)
 1) Usuário informa e-mail em “Registrar”.
@@ -50,4 +70,3 @@ Fluxo de Onboarding (Free)
 Observações
 - Roles padrão e permissões são garantidas on-demand na criação do tenant.
 - A estratégia de redirect via hash serve ao ambiente dev; em prod, preferir cookies HttpOnly e troca via front-channel/back-channel.
-
