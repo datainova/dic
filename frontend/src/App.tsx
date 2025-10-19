@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 
 function parseHash() {
   const h = (typeof window !== 'undefined' && window.location.hash) || ''
@@ -36,6 +36,32 @@ function useAuth() {
   return { isAuthed, access, setAccess, me, apiBase }
 }
 
+function Header({ onSignOut }: { onSignOut(): void }){
+  return (
+    <header className="w-full border-b border-slate-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+      <div className="max-w-4xl mx-auto px-6 h-14 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="h-7 w-7 rounded-md bg-brand-600 text-white grid place-items-center font-bold">D</div>
+          <span className="font-semibold">DataInova Connect</span>
+        </div>
+        <button onClick={onSignOut} className="text-sm text-slate-600 hover:text-slate-900">Sair</button>
+      </div>
+    </header>
+  )
+}
+
+function Card({ children, title, subtitle }: { children: React.ReactNode; title: string; subtitle?: string }){
+  return (
+    <div className="w-full max-w-md bg-white rounded-xl shadow-lg ring-1 ring-black/5 p-6">
+      <div className="mb-4">
+        <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
+        {subtitle && <p className="text-slate-500 text-sm mt-1">{subtitle}</p>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
 export default function App(){
   // consume tokens from backend redirect if present
   useMemo(() => { storeTokensFromHash() }, [])
@@ -44,22 +70,35 @@ export default function App(){
   const [mode, setMode] = useState<'login'|'register'>('register')
   const [message, setMessage] = useState('')
   const [profile, setProfile] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+  const [devLink, setDevLink] = useState<string | null>(null)
+
+  useEffect(() => {
+    // clear any previous state when switching mode
+    setMessage('')
+    setDevLink(null)
+  }, [mode])
 
   async function submitEmail(e: React.FormEvent) {
     e.preventDefault()
     setMessage('')
-    const endpoint = mode === 'register' ? '/auth/register' : '/auth/login-email'
-    const res = await fetch(`${apiBase}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
-    })
-    const data = await res.json()
-    if (res.ok) {
-      setMessage('Enviamos um link para seu e-mail. Verifique sua caixa de entrada.')
-      if (data.dev_link) setMessage(m => m + ` (Dev link: ${data.dev_link})`)
-    } else {
-      setMessage(`Erro: ${data.error || 'Falha ao enviar link'}`)
+    setLoading(true)
+    try {
+      const endpoint = mode === 'register' ? '/auth/register' : '/auth/login-email'
+      const res = await fetch(`${apiBase}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setMessage('Enviamos um link para seu e-mail. Você pode fechar esta janela e acessar pelo link enviado.')
+        if (data.dev_link) setDevLink(data.dev_link)
+      } else {
+        setMessage(`Erro: ${data.error || 'Falha ao enviar link'}`)
+      }
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -69,35 +108,69 @@ export default function App(){
   }
 
   return (
-    <div className="p-8 space-y-6 max-w-xl">
-      <h1 className="text-2xl font-bold">DataInova Connect — Login</h1>
-      {!isAuthed && (
-        <div className="space-y-2">
-          <div className="flex gap-4">
-            <button onClick={() => setMode('register')} className={mode==='register'?'font-semibold underline':''}>Registrar</button>
-            <button onClick={() => setMode('login')} className={mode==='login'?'font-semibold underline':''}>Entrar</button>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+      {isAuthed ? (
+        <Header onSignOut={() => { localStorage.clear(); location.href = '/' }} />
+      ) : (
+        <div className="h-14" />
+      )}
+      <main className="max-w-4xl mx-auto px-6 py-10 grid place-items-center">
+        {!isAuthed ? (
+          <Card
+            title={mode==='register' ? 'Criar sua conta' : 'Entrar'}
+            subtitle={mode==='register' ? 'Informe seu e-mail para receber o link de confirmação' : 'Informe seu e-mail para receber o link de acesso'}
+          >
+            <div className="flex gap-2 mb-4">
+              <button onClick={() => setMode('register')} className={`text-sm px-3 py-1 rounded ${mode==='register' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}>Registrar</button>
+              <button onClick={() => setMode('login')} className={`text-sm px-3 py-1 rounded ${mode==='login' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}>Entrar</button>
+            </div>
+            <form onSubmit={submitEmail} className="space-y-4">
+              <label className="block text-sm">
+                <span className="text-slate-700">E-mail</span>
+                <input value={email} onChange={e=>setEmail(e.target.value)} type="email" required placeholder="voce@empresa.com"
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+              </label>
+              <button disabled={loading} type="submit" className="w-full rounded-md bg-brand-600 text-white py-2 hover:bg-brand-700 disabled:opacity-60">
+                {loading ? 'Enviando...' : (mode==='register' ? 'Enviar link de cadastro' : 'Enviar link de acesso')}
+              </button>
+            </form>
+            {message && <p className="text-sm text-slate-600 mt-4">{message}</p>}
+            {devLink && (
+              <a className="mt-3 inline-flex items-center text-sm text-brand-700 hover:underline" href={devLink}>
+                Abrir link de desenvolvimento
+              </a>
+            )}
+          </Card>
+        ) : (
+          <div className="w-full max-w-3xl">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold">Bem-vindo!</h2>
+              <p className="text-slate-600">Você está autenticado. Carregue seu perfil para ver detalhes de usuário e tenant.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={loadProfile} className="rounded-md bg-slate-900 text-white px-4 py-2 hover:bg-slate-800">Carregar perfil</button>
+              <button onClick={() => { localStorage.clear(); location.href = '/' }} className="rounded-md border border-slate-300 px-4 py-2 text-slate-700 hover:bg-slate-50">Sair</button>
+            </div>
+            {profile && (
+              <div className="mt-6 grid md:grid-cols-2 gap-4">
+                <div className="bg-white rounded-xl shadow ring-1 ring-black/5 p-4">
+                  <h3 className="font-medium mb-2">Usuário</h3>
+                  <pre className="text-xs bg-slate-50 p-2 rounded overflow-auto">{JSON.stringify(profile.user, null, 2)}</pre>
+                </div>
+                <div className="bg-white rounded-xl shadow ring-1 ring-black/5 p-4">
+                  <h3 className="font-medium mb-2">Tenant</h3>
+                  <pre className="text-xs bg-slate-50 p-2 rounded overflow-auto">{JSON.stringify(profile.tenant, null, 2)}</pre>
+                </div>
+                <div className="bg-white rounded-xl shadow ring-1 ring-black/5 p-4 md:col-span-2">
+                  <h3 className="font-medium mb-2">Roles</h3>
+                  <pre className="text-xs bg-slate-50 p-2 rounded overflow-auto">{JSON.stringify(profile.roles, null, 2)}</pre>
+                </div>
+              </div>
+            )}
           </div>
-          <form onSubmit={submitEmail} className="space-y-2">
-            <label className="block">
-              <span>E-mail</span>
-              <input value={email} onChange={e=>setEmail(e.target.value)} type="email" required className="border p-2 w-full" placeholder="voce@empresa.com" />
-            </label>
-            <button type="submit" className="bg-black text-white px-4 py-2 rounded">
-              {mode==='register' ? 'Enviar link de cadastro' : 'Enviar link de acesso'}
-            </button>
-          </form>
-          {message && <p className="text-sm text-gray-600">{message}</p>}
-        </div>
-      )}
-      {isAuthed && (
-        <div className="space-y-2">
-          <p>Você está autenticado. Carregue seu perfil:</p>
-          <button onClick={loadProfile} className="bg-black text-white px-4 py-2 rounded">Carregar perfil</button>
-          {profile && (
-            <pre className="bg-gray-100 p-2 text-sm overflow-auto">{JSON.stringify(profile,null,2)}</pre>
-          )}
-        </div>
-      )}
+        )}
+      </main>
+      <footer className="py-8 text-center text-xs text-slate-500">© {new Date().getFullYear()} DataInova</footer>
     </div>
   )
 }
