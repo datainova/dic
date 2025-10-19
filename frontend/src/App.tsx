@@ -1,4 +1,35 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import Logo from './assets/logo.svg'
+
+function ThemeToggle(){
+  const [theme, setTheme] = useState<string>(() => {
+    try {
+      const t = localStorage.getItem('theme')
+      if (t) return t
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    } catch { return 'light' }
+  })
+  useEffect(() => {
+    try {
+      if (theme === 'dark') document.documentElement.classList.add('dark')
+      else document.documentElement.classList.remove('dark')
+      localStorage.setItem('theme', theme)
+    } catch {}
+  }, [theme])
+  return (
+    <button
+      aria-label={theme==='dark' ? 'Alternar para tema claro' : 'Alternar para tema escuro'}
+      className="h-8 w-8 grid place-items-center rounded-md border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+    >
+      {theme === 'dark' ? (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 18a6 6 0 100-12 6 6 0 000 12z"/><path fillRule="evenodd" d="M12 2.25a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V3A.75.75 0 0112 2.25zm0 15.75a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V18.75a.75.75 0 01.75-.75zm9-6a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5H20.25a.75.75 0 01.75.75zM6 12a.75.75 0 01-.75.75H3.75a.75.75 0 010-1.5H5.25A.75.75 0 016 12zm12.728 6.728a.75.75 0 01-1.06 0l-1.06-1.06a.75.75 0 011.06-1.06l1.06 1.06a.75.75 0 010 1.06zM7.392 7.392a.75.75 0 01-1.06 0l-1.06-1.06a.75.75 0 011.06-1.06l1.06 1.06a.75.75 0 010 1.06zm0 9.216a.75.75 0 010 1.06l-1.06 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zM18.728 5.272a.75.75 0 010 1.06l-1.06 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0z" clipRule="evenodd"/></svg>
+      ) : (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M21.752 15.002A9.718 9.718 0 0112.002 22C6.201 22 1.5 17.299 1.5 11.498 1.5 6.78 4.66 2.85 8.85 1.65a.75.75 0 01.89 1.03A8.25 8.25 0 0018.32 17.26a.75.75 0 011.03.89 9.59 9.59 0 01.401-3.148z"/></svg>
+      )}
+    </button>
+  )
+}
 
 function parseHash() {
   const h = (typeof window !== 'undefined' && window.location.hash) || ''
@@ -38,13 +69,17 @@ function useAuth() {
 
 function Header({ onSignOut }: { onSignOut(): void }){
   return (
-    <header className="w-full border-b border-slate-200 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50">
+    <header className="w-full border-b border-slate-200 bg-white/70 dark:bg-slate-900/70 backdrop-blur supports-[backdrop-filter]:bg-white/50 dark:supports-[backdrop-filter]:bg-slate-900/50">
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 bg-slate-900 text-white px-3 py-1 rounded">Pular para conteúdo</a>
       <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-md bg-brand-600 text-white grid place-items-center font-bold">D</div>
-          <span className="font-semibold tracking-tight">DataInova Connect</span>
+          <img src={Logo} alt="DataInova" className="h-7 w-7" />
+          <span className="font-semibold tracking-tight text-slate-900 dark:text-slate-100">DataInova Connect</span>
         </div>
-        <button onClick={onSignOut} className="text-sm text-slate-600 hover:text-slate-900">Sair</button>
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <button onClick={onSignOut} className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white">Sair</button>
+        </div>
       </div>
     </header>
   )
@@ -52,10 +87,10 @@ function Header({ onSignOut }: { onSignOut(): void }){
 
 function Card({ children, title, subtitle }: { children: React.ReactNode; title: string; subtitle?: string }){
   return (
-    <div className="w-full max-w-md bg-white rounded-2xl shadow-xl ring-1 ring-black/5 p-6 md:p-7">
+    <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl ring-1 ring-black/5 dark:ring-white/10 p-6 md:p-7">
       <div className="mb-5">
-        <h2 className="text-[20px] md:text-[22px] font-semibold text-slate-900 tracking-tight">{title}</h2>
-        {subtitle && <p className="text-slate-500 text-sm mt-1 leading-relaxed">{subtitle}</p>}
+        <h2 className="text-[20px] md:text-[22px] font-semibold text-slate-900 dark:text-slate-100 tracking-tight">{title}</h2>
+        {subtitle && <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 leading-relaxed">{subtitle}</p>}
       </div>
       {children}
     </div>
@@ -206,7 +241,7 @@ export default function App(){
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-950 dark:to-slate-900 relative overflow-hidden">
       <div className="bg-blob one top-20 -left-16" />
       <div className="bg-blob two bottom-10 -right-16" />
       {isAuthed ? (
@@ -214,13 +249,13 @@ export default function App(){
       ) : (
         <div className="h-14" />
       )}
-      <main className="max-w-6xl mx-auto px-6 py-12 grid place-items-center">
+      <main id="main" className="max-w-6xl mx-auto px-6 py-12 grid place-items-center">
         {!isAuthed ? (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10 items-center w-full">
             <section className="hidden xl:block">
-              <h1 className="text-4xl font-bold tracking-tight text-slate-900">Acesse a plataforma DataInova</h1>
-              <p className="mt-3 text-slate-600 leading-relaxed max-w-xl">Entre sem senha usando um link mágico ou autentique‑se por senha. Após verificar seu e‑mail, crie o seu espaço de trabalho (Free) e convide sua equipe.</p>
-              <ul className="mt-6 space-y-2 text-slate-700">
+              <h1 className="text-4xl font-bold tracking-tight text-slate-900 dark:text-white">Acesse a plataforma DataInova</h1>
+              <p className="mt-3 text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl">Entre sem senha usando um link mágico ou autentique‑se por senha. Após verificar seu e‑mail, crie o seu espaço de trabalho (Free) e convide sua equipe.</p>
+              <ul className="mt-6 space-y-2 text-slate-700 dark:text-slate-300">
                 <li className="flex items-center gap-2"><span className="h-5 w-5 rounded-full bg-brand-100 text-brand-700 grid place-items-center text-xs">✓</span> Login seguro e prático</li>
                 <li className="flex items-center gap-2"><span className="h-5 w-5 rounded-full bg-brand-100 text-brand-700 grid place-items-center text-xs">✓</span> Espaços multi‑tenant com RLS</li>
                 <li className="flex items-center gap-2"><span className="h-5 w-5 rounded-full bg-brand-100 text-brand-700 grid place-items-center text-xs">✓</span> RBAC por roles e permissões</li>
@@ -231,27 +266,27 @@ export default function App(){
                 title={mode==='register' ? 'Criar sua conta' : 'Entrar'}
                 subtitle={mode==='register' ? 'Informe seu e‑mail para receber um link de confirmação' : (loginMode==='password' ? 'Entre com seu e‑mail e senha' : 'Entre com um link enviado para o seu e‑mail')}
               >
-                <div className="inline-flex bg-slate-100 rounded-lg p-1 mb-5">
-                  <button onClick={() => setMode('register')} className={`text-sm px-3 py-1 rounded-md transition ${mode==='register' ? 'bg-white shadow text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}>Registrar</button>
-                  <button onClick={() => setMode('login')} className={`text-sm px-3 py-1 rounded-md transition ${mode==='login' ? 'bg-white shadow text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}>Entrar</button>
+                <div className="inline-flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1 mb-5">
+                  <button onClick={() => setMode('register')} className={`text-sm px-3 py-1 rounded-md transition ${mode==='register' ? 'bg-white dark:bg-slate-700 shadow text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>Registrar</button>
+                  <button onClick={() => setMode('login')} className={`text-sm px-3 py-1 rounded-md transition ${mode==='login' ? 'bg-white dark:bg-slate-700 shadow text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>Entrar</button>
                 </div>
                 {mode==='login' && (
                   <div className="flex gap-2 -mt-2 mb-4">
-                    <button onClick={()=>setLoginMode('link')} className={`text-xs px-2 py-1 rounded ${loginMode==='link'?'bg-slate-100 text-slate-900':'text-slate-600 hover:bg-slate-50'}`}>Por link</button>
-                    <button onClick={()=>setLoginMode('password')} className={`text-xs px-2 py-1 rounded ${loginMode==='password'?'bg-slate-100 text-slate-900':'text-slate-600 hover:bg-slate-50'}`}>Com senha</button>
+                    <button onClick={()=>setLoginMode('link')} className={`text-xs px-2 py-1 rounded ${loginMode==='link'?'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100':'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>Por link</button>
+                    <button onClick={()=>setLoginMode('password')} className={`text-xs px-2 py-1 rounded ${loginMode==='password'?'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100':'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>Com senha</button>
                   </div>
                 )}
                 {loginMode === 'password' && mode==='login' ? (
                   <form onSubmit={submitLoginPassword} className="space-y-4">
                     <label className="block text-sm">
-                      <span className="text-slate-700">E‑mail</span>
+                      <span className="text-slate-700 dark:text-slate-200">E‑mail</span>
                       <input value={email} onChange={e=>setEmail(e.target.value)} type="email" required placeholder="voce@empresa.com"
-                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                        className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
                     </label>
                     <label className="block text-sm">
-                      <span className="text-slate-700">Senha</span>
+                      <span className="text-slate-700 dark:text-slate-200">Senha</span>
                       <input value={password} onChange={e=>setPassword(e.target.value)} type="password" required placeholder="Sua senha"
-                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                        className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
                     </label>
                     <button disabled={loading} type="submit" className="w-full rounded-lg bg-brand-600 text-white py-2.5 hover:bg-brand-700 disabled:opacity-60">
                       {loading ? 'Entrando…' : 'Entrar'}
@@ -260,9 +295,9 @@ export default function App(){
                 ) : (
                   <form onSubmit={submitEmail} className="space-y-4">
                     <label className="block text-sm">
-                      <span className="text-slate-700">E‑mail</span>
+                      <span className="text-slate-700 dark:text-slate-200">E‑mail</span>
                       <input value={email} onChange={e=>setEmail(e.target.value)} type="email" required placeholder="voce@empresa.com"
-                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                        className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
                     </label>
                     <button disabled={loading} type="submit" className="w-full rounded-lg bg-brand-600 text-white py-2.5 hover:bg-brand-700 disabled:opacity-60">
                       {loading ? 'Enviando…' : (mode==='register' ? 'Enviar link de cadastro' : 'Enviar link de acesso')}
