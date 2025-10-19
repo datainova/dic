@@ -84,3 +84,15 @@ Fluxo de Onboarding (Free)
 Observações
 - Roles padrão e permissões são garantidas on-demand na criação do tenant.
 - A estratégia de redirect via hash serve ao ambiente dev; em prod, preferir cookies HttpOnly e troca via front-channel/back-channel.
+- POST /auth/forgot-password
+  - Body: { email }
+  - Ações: gera token (1h) e envia link de redefinição por e‑mail. Sempre retorna 200 para evitar enumeração.
+  - Response 200: { ok: true }
+
+- GET /auth/reset-password?token=...&redirect=http://localhost:5173/reset
+  - Valida o token e redireciona para o front com `#reset_token=...`.
+  - Response 200 (sem redirect): { ok: true }
+
+- POST /auth/reset-password
+  - Body: { token, password }
+  - Ações: valida token, persiste nova senha (bcrypt + pepper) e retorna { ok: true }.

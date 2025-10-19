@@ -102,7 +102,7 @@ export default function App(){
   useMemo(() => { storeTokensFromHash() }, [])
   const { isAuthed, me, apiBase } = useAuth()
   const [email, setEmail] = useState('')
-  const [mode, setMode] = useState<'login'|'register'>('register')
+  const [mode, setMode] = useState<'login'|'register'>('login')
   const [message, setMessage] = useState('')
   const [profile, setProfile] = useState<any>(null)
   const [tenants, setTenants] = useState<any[]>([])
@@ -110,6 +110,8 @@ export default function App(){
   const [loading, setLoading] = useState(false)
   const [devLink, setDevLink] = useState<string | null>(null)
   const [loginMode, setLoginMode] = useState<'link'|'password'>('link')
+  const [showForgot, setShowForgot] = useState(false)
+  const [resetToken, setResetToken] = useState<string | null>(null)
   const [password, setPassword] = useState('')
   const [pwdNew, setPwdNew] = useState('')
   const [pwdCurrent, setPwdCurrent] = useState('')
@@ -183,6 +185,37 @@ export default function App(){
       else setMessage(`Erro: ${data.error || 'Falha ao definir senha'}`)
     } finally { setLoading(false) }
   }
+  async function submitForgot(e: React.FormEvent) {
+    e.preventDefault()
+    setMessage('')
+    setLoading(true)
+    try {
+      const res = await fetch(`${apiBase}/auth/forgot-password`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
+      })
+      const data = await res.json().catch(()=>({}))
+      if (res.ok) {
+        setMessage('Enviamos um link de redefinição para o seu e‑mail.')
+        if (data.dev_link) setDevLink(data.dev_link)
+      } else setMessage(`Erro: ${data.error || 'Falha ao solicitar redefinição'}`)
+    } finally { setLoading(false) }
+  }
+  async function submitDoReset(e: React.FormEvent) {
+    e.preventDefault()
+    setMessage('')
+    setLoading(true)
+    try {
+      if (!resetToken) { setMessage('Token inválido.'); return }
+      const res = await fetch(`${apiBase}/auth/reset-password`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: resetToken, password: pwdNew })
+      })
+      const data = await res.json().catch(()=>({}))
+      if (res.ok) {
+        setMessage('Senha redefinida com sucesso. Faça login com sua nova senha.')
+        setMode('login'); setLoginMode('password'); setResetToken(null); history.replaceState(null,'',location.pathname)
+      } else setMessage(`Erro: ${data.error || 'Falha ao redefinir'}`)
+    } finally { setLoading(false) }
+  }
 
   async function loadProfile() {
     const p = await me()
@@ -240,6 +273,14 @@ export default function App(){
     }
   }
 
+  // capture reset token from URL hash
+  useEffect(() => {
+    try {
+      const h = parseHash()
+      if (h.reset_token) setResetToken(h.reset_token)
+    } catch {}
+  }, [])
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-950 dark:to-slate-900 relative overflow-hidden">
       <div className="bg-blob one top-20 -left-16" />
@@ -270,13 +311,24 @@ export default function App(){
                   <button onClick={() => setMode('register')} className={`text-sm px-3 py-1 rounded-md transition ${mode==='register' ? 'bg-white dark:bg-slate-700 shadow text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>Registrar</button>
                   <button onClick={() => setMode('login')} className={`text-sm px-3 py-1 rounded-md transition ${mode==='login' ? 'bg-white dark:bg-slate-700 shadow text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>Entrar</button>
                 </div>
-                {mode==='login' && (
+                {mode==='login' && !resetToken && (
                   <div className="flex gap-2 -mt-2 mb-4">
                     <button onClick={()=>setLoginMode('link')} className={`text-xs px-2 py-1 rounded ${loginMode==='link'?'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100':'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>Por link</button>
                     <button onClick={()=>setLoginMode('password')} className={`text-xs px-2 py-1 rounded ${loginMode==='password'?'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100':'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>Com senha</button>
                   </div>
                 )}
-                {loginMode === 'password' && mode==='login' ? (
+                {resetToken ? (
+                  <form onSubmit={submitDoReset} className="space-y-4">
+                    <p className="text-sm text-slate-600 dark:text-slate-300">Defina sua nova senha.</p>
+                    <label className="block text-sm">
+                      <span className="text-slate-700 dark:text-slate-200">Nova senha</span>
+                      <input value={pwdNew} onChange={e=>setPwdNew(e.target.value)} type="password" required placeholder="mínimo 8 caracteres"
+                        className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                    </label>
+                    <button disabled={loading} className="w-full rounded-lg bg-brand-600 text-white py-2.5 hover:bg-brand-700 disabled:opacity-60">Salvar nova senha</button>
+                    <button type="button" onClick={()=>{ setResetToken(null); history.replaceState(null,'',location.pathname) }} className="w-full text-sm text-slate-600 dark:text-slate-300 mt-1 hover:underline">Cancelar</button>
+                  </form>
+                ) : loginMode === 'password' && mode==='login' ? (
                   <form onSubmit={submitLoginPassword} className="space-y-4">
                     <label className="block text-sm">
                       <span className="text-slate-700 dark:text-slate-200">E‑mail</span>
@@ -291,6 +343,10 @@ export default function App(){
                     <button disabled={loading} type="submit" className="w-full rounded-lg bg-brand-600 text-white py-2.5 hover:bg-brand-700 disabled:opacity-60">
                       {loading ? 'Entrando…' : 'Entrar'}
                     </button>
+                    <div className="flex items-center justify-between text-xs mt-1">
+                      <button type="button" onClick={()=>setShowForgot(true)} className="text-slate-600 dark:text-slate-300 hover:underline">Esqueci minha senha</button>
+                      <button type="button" onClick={()=>setMode('register')} className="text-slate-600 dark:text-slate-300 hover:underline">Criar conta</button>
+                    </div>
                   </form>
                 ) : (
                   <form onSubmit={submitEmail} className="space-y-4">
@@ -302,7 +358,29 @@ export default function App(){
                     <button disabled={loading} type="submit" className="w-full rounded-lg bg-brand-600 text-white py-2.5 hover:bg-brand-700 disabled:opacity-60">
                       {loading ? 'Enviando…' : (mode==='register' ? 'Enviar link de cadastro' : 'Enviar link de acesso')}
                     </button>
+                    {mode==='login' && (
+                      <div className="flex items-center justify-between text-xs mt-1">
+                        <button type="button" onClick={()=>setShowForgot(true)} className="text-slate-600 dark:text-slate-300 hover:underline">Esqueci minha senha</button>
+                        <button type="button" onClick={()=>setMode('register')} className="text-slate-600 dark:text-slate-300 hover:underline">Criar conta</button>
+                      </div>
+                    )}
                   </form>
+                )}
+                {showForgot && !resetToken && (
+                  <div className="mt-4 border-t pt-4 border-slate-200 dark:border-slate-800">
+                    <h3 className="font-medium text-sm text-slate-900 dark:text-slate-100 mb-1">Recuperar senha</h3>
+                    <form onSubmit={submitForgot} className="space-y-3">
+                      <label className="block text-sm">
+                        <span className="text-slate-700 dark:text-slate-200">E‑mail</span>
+                        <input value={email} onChange={e=>setEmail(e.target.value)} type="email" required placeholder="voce@empresa.com"
+                          className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button disabled={loading} className="rounded-md bg-brand-600 text-white px-4 py-2 hover:bg-brand-700 disabled:opacity-60">Enviar link</button>
+                        <button type="button" onClick={()=>setShowForgot(false)} className="text-sm text-slate-600 dark:text-slate-300 hover:underline">Cancelar</button>
+                      </div>
+                    </form>
+                  </div>
                 )}
                 {message && <p className="text-sm text-slate-600 mt-4" aria-live="polite">{message}</p>}
                 {devLink && (

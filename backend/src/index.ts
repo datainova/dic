@@ -4,7 +4,7 @@ import { Pool } from 'pg'
 import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
 import { URL } from 'url'
-import { sendEmailLink } from './email'
+import { sendEmailLink, sendResetLink } from './email'
 import bcrypt from 'bcrypt'
 
 dotenv.config()
@@ -179,10 +179,10 @@ app.post('/auth/register', async (req, res) => {
 
     // Generate verification token (email link) — without tenant; tenant will be created after verify
     const token = signJWT({ purpose: 'verify_email', email, user_id: userId }, { expiresIn: '24h' })
-    const redirect = process.env.WEBAPP_BASE_URL ? new URL(process.env.WEBAPP_BASE_URL) : null
-    const link = new URL(`/auth/verify-email`, `http://localhost:${process.env.PORT || 4000}`)
+  const redirect = process.env.WEBAPP_BASE_URL ? new URL(process.env.WEBAPP_BASE_URL) : null
+  const link = new URL(`/auth/verify-email`, `http://localhost:${process.env.PORT || 4000}`)
     link.searchParams.set('token', token)
-    if (redirect) link.searchParams.set('redirect', `${redirect.origin}/auth/callback`)
+  if (redirect) link.searchParams.set('redirect', `${redirect.origin}/auth/callback`)
 
     await client.query('COMMIT')
     await sendEmailLink(email, link.toString())
@@ -242,6 +242,82 @@ app.get('/auth/verify-email', async (req, res) => {
     await client.query('ROLLBACK')
     console.error('verify error', e)
     return res.status(500).json({ error: 'VERIFY_FAILED' })
+  } finally {
+    client.release()
+  }
+})
+
+// Forgot password: sends reset link
+app.post('/auth/forgot-password', async (req, res) => {
+  const email = (req.body?.email || '').toString().trim().toLowerCase()
+  if (!email) return res.status(400).json({ error: 'EMAIL_REQUIRED' })
+  const client = await pool.connect()
+  try {
+    const u = await client.query(`SELECT id FROM users WHERE email = $1`, [email])
+    // Always respond ok to prevent user enumeration
+    if (!u.rowCount) return res.json({ ok: true })
+    const userId = u.rows[0].id
+    const token = signJWT({ purpose: 'reset_password', user_id: userId, email }, { expiresIn: '1h' })
+    const redirect = process.env.WEBAPP_BASE_URL ? new URL(process.env.WEBAPP_BASE_URL) : null
+    const link = new URL(`/auth/reset-password`, `http://localhost:${process.env.PORT || 4000}`)
+    link.searchParams.set('token', token)
+    if (redirect) link.searchParams.set('redirect', `${redirect.origin}/reset`)
+    await sendResetLink(email, link.toString())
+    return res.json({ ok: true, ...(process.env.NODE_ENV !== 'production' ? { dev_link: link.toString() } : {}) })
+  } catch (e) {
+    console.error('forgot-password error', e)
+    return res.status(500).json({ error: 'FORGOT_PASSWORD_FAILED' })
+  } finally {
+    client.release()
+  }
+})
+
+// Reset password redirect/verify
+app.get('/auth/reset-password', async (req, res) => {
+  const { token, redirect } = req.query as Record<string, string>
+  if (!token) return res.status(400).json({ error: 'TOKEN_REQUIRED' })
+  try {
+    const p = verifyJWT(token) as any
+    if (p.purpose !== 'reset_password') throw new Error('INVALID_PURPOSE')
+  } catch (e) {
+    return res.status(401).json({ error: 'TOKEN_INVALID' })
+  }
+  if (redirect) {
+    const url = new URL(redirect)
+    url.hash = `reset_token=${token}`
+    return res.redirect(url.toString())
+  }
+  return res.json({ ok: true })
+})
+
+// Reset password submit
+app.post('/auth/reset-password', async (req, res) => {
+  const { token, password } = (req.body || {}) as { token?: string; password?: string }
+  if (!token || !password) return res.status(400).json({ error: 'TOKEN_AND_PASSWORD_REQUIRED' })
+  let payload: any
+  try {
+    payload = verifyJWT(token)
+    if (payload.purpose !== 'reset_password') throw new Error('INVALID_PURPOSE')
+  } catch (e) {
+    return res.status(401).json({ error: 'TOKEN_INVALID' })
+  }
+  const userId: string = payload.user_id
+  const email: string = payload.email
+  const client = await pool.connect()
+  try {
+    const u = await client.query(`SELECT id FROM users WHERE id = $1 AND email = $2`, [userId, email])
+    if (!u.rowCount) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+    const newHash = await hashPassword(password)
+    await client.query(
+      `INSERT INTO identities(user_id, provider, provider_uid, secret_hash)
+       VALUES ($1,'local',$2,$3)
+       ON CONFLICT (provider, provider_uid) DO UPDATE SET user_id = EXCLUDED.user_id, secret_hash = EXCLUDED.secret_hash`,
+      [userId, email, newHash]
+    )
+    return res.json({ ok: true })
+  } catch (e) {
+    console.error('reset-password error', e)
+    return res.status(500).json({ error: 'RESET_PASSWORD_FAILED' })
   } finally {
     client.release()
   }
