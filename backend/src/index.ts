@@ -121,11 +121,11 @@ function randomToken(size = 32) {
   return crypto.randomBytes(size).toString('base64url')
 }
 
-async function issueSessionAndTokens(client: any, userId: string, tenantId: string) {
+async function issueSessionAndTokens(client: any, userId: string, tenantId?: string | null) {
   const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000) // 30d
   const { rows: sRows } = await client.query(
     `INSERT INTO sessions(user_id, tenant_id, expires_at) VALUES ($1,$2,$3) RETURNING id`,
-    [userId, tenantId, expiresAt]
+    [userId, tenantId || null, expiresAt]
   )
   const sessionId = sRows[0].id
 
@@ -137,14 +137,19 @@ async function issueSessionAndTokens(client: any, userId: string, tenantId: stri
     [sessionId, refreshHash]
   )
 
-  const rolesRows = await client.query(
-    `SELECT r.code FROM user_roles ur
-     JOIN roles r ON r.id = ur.role_id
-     WHERE ur.user_id = $1 AND ur.tenant_id = $2`,
-    [userId, tenantId]
-  )
-  const roles = rolesRows.rows.map((r: any) => r.code)
-  const access = signJWT({ sub: userId, ten: tenantId, roles, sid: sessionId }, { expiresIn: '15m' })
+  let roles: string[] = []
+  if (tenantId) {
+    const rolesRows = await client.query(
+      `SELECT r.code FROM user_roles ur
+       JOIN roles r ON r.id = ur.role_id
+       WHERE ur.user_id = $1 AND ur.tenant_id = $2`,
+      [userId, tenantId]
+    )
+    roles = rolesRows.rows.map((r: any) => r.code)
+  }
+  const payload: any = { sub: userId, roles, sid: sessionId }
+  if (tenantId) payload.ten = tenantId
+  const access = signJWT(payload, { expiresIn: '15m' })
   return { access_token: access, refresh_token: refresh, expires_in: 900 }
 }
 
@@ -172,54 +177,8 @@ app.post('/auth/register', async (req, res) => {
     )
     const userId = u.rows[0].id
 
-    // If user has tenant, reuse first; otherwise create new free tenant
-    let tenantId: string | null = null
-    const existing = await client.query(
-      `SELECT tenant_id FROM user_tenants WHERE user_id = $1 LIMIT 1`,
-      [userId]
-    )
-    if (existing.rowCount) {
-      tenantId = existing.rows[0].tenant_id
-    } else {
-      const localPart = email.split('@')[0].replace(/[^a-z0-9]+/g, '-')
-      const slugBase = localPart || 'tenant'
-      const { rows: tRows } = await client.query(
-        `INSERT INTO tenants(slug, name, plan, status)
-         VALUES ($1, $2, 'free', 'active')
-         ON CONFLICT (slug) DO NOTHING
-         RETURNING id`,
-        [slugBase, slugBase]
-      )
-      if (tRows.length) {
-        tenantId = tRows[0].id
-      } else {
-        // collision; create unique slug
-        const uniqueSlug = slugBase + '-' + Math.random().toString(36).slice(2, 6)
-        const { rows } = await client.query(
-          `INSERT INTO tenants(slug, name, plan, status)
-           VALUES ($1, $2, 'free', 'active') RETURNING id`,
-          [uniqueSlug, uniqueSlug]
-        )
-        tenantId = rows[0].id
-      }
-
-      await ensureDefaultRoles(client, tenantId!)
-      // owner role for the creator
-      const owner = await client.query(`SELECT id FROM roles WHERE tenant_id = $1 AND code = 'owner'`, [tenantId])
-      await client.query(
-        `INSERT INTO user_tenants(user_id, tenant_id, status) VALUES ($1,$2,'active')
-         ON CONFLICT (user_id, tenant_id) DO NOTHING`,
-        [userId, tenantId]
-      )
-      await client.query(
-        `INSERT INTO user_roles(user_id, tenant_id, role_id) VALUES ($1,$2,$3)
-         ON CONFLICT (user_id, tenant_id, role_id) DO NOTHING`,
-        [userId, tenantId, owner.rows[0].id]
-      )
-    }
-
-    // Generate verification token (email link)
-    const token = signJWT({ purpose: 'verify_email', email, user_id: userId, tenant_id: tenantId }, { expiresIn: '24h' })
+    // Generate verification token (email link) — without tenant; tenant will be created after verify
+    const token = signJWT({ purpose: 'verify_email', email, user_id: userId }, { expiresIn: '24h' })
     const redirect = process.env.WEBAPP_BASE_URL ? new URL(process.env.WEBAPP_BASE_URL) : null
     const link = new URL(`/auth/verify-email`, `http://localhost:${process.env.PORT || 4000}`)
     link.searchParams.set('token', token)
@@ -255,9 +214,7 @@ app.get('/auth/verify-email', async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const { email, user_id: userId, tenant_id: tenantId } = payload
-    // Set RLS context for tenant-scoped tables
-    await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId])
+    const { email, user_id: userId } = payload
     // activate user
     await client.query(`UPDATE users SET is_active = true WHERE id = $1`, [userId])
     // ensure identity (local, provider_uid=email)
@@ -267,7 +224,12 @@ app.get('/auth/verify-email', async (req, res) => {
        ON CONFLICT (provider, provider_uid) DO UPDATE SET user_id = EXCLUDED.user_id`,
       [userId, email]
     )
-    // tenant membership already assigned
+    // If user already has a tenant, issue tokens with that tenant; otherwise issue tokens without tenant
+    const ut = await client.query(`SELECT tenant_id FROM user_tenants WHERE user_id = $1 LIMIT 1`, [userId])
+    const tenantId: string | null = ut.rowCount ? ut.rows[0].tenant_id : null
+    if (tenantId) {
+      await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId])
+    }
     const tokens = await issueSessionAndTokens(client, userId, tenantId)
     await client.query('COMMIT')
     if (redirect) {
@@ -326,11 +288,15 @@ app.get('/me', async (req, res) => {
   } catch (e) {
     return res.status(401).json({ error: 'TOKEN_INVALID' })
   }
-  const { sub: userId, ten: tenantId } = payload
+  const { sub: userId, ten: tenantId } = payload as any
   const client = await pool.connect()
   try {
-    await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId])
     const u = await client.query(`SELECT id, email, name, is_active, created_at FROM users WHERE id = $1`, [userId])
+    if (!tenantId) {
+      // No tenant yet — return user only
+      return res.json({ user: u.rows[0], tenant: null, roles: [] })
+    }
+    await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId])
     const t = await client.query(`SELECT id, slug, name, plan, status FROM tenants WHERE id = $1`, [tenantId])
     const r = await client.query(
       `SELECT r.code FROM user_roles ur JOIN roles r ON r.id = ur.role_id
@@ -341,6 +307,69 @@ app.get('/me', async (req, res) => {
   } catch (e) {
     console.error('me error', e)
     return res.status(500).json({ error: 'ME_FAILED' })
+  } finally {
+    client.release()
+  }
+})
+
+// Create tenant after verification (user chooses a name)
+// Body: { name: string, slug?: string }
+app.post('/tenants', async (req, res) => {
+  const auth = (req.headers['authorization'] || '').toString()
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+  if (!token) return res.status(401).json({ error: 'NO_TOKEN' })
+  let payload: any
+  try { payload = verifyJWT(token) } catch { return res.status(401).json({ error: 'TOKEN_INVALID' }) }
+  const userId: string = payload.sub
+  const { name, slug } = req.body || {}
+  if (!name || String(name).trim().length < 2) return res.status(400).json({ error: 'INVALID_TENANT_NAME' })
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const baseSlug = (slug && String(slug).toLowerCase().replace(/[^a-z0-9-]+/g, '-')) ||
+      String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')
+
+    // Try create with provided/derived slug, ensure uniqueness
+    let createdTenantId: string | null = null
+    const t1 = await client.query(
+      `INSERT INTO tenants(slug, name, plan, status) VALUES ($1,$2,'free','active')
+       ON CONFLICT (slug) DO NOTHING RETURNING id`,
+      [baseSlug, name]
+    )
+    if (t1.rowCount) {
+      createdTenantId = t1.rows[0].id
+    } else {
+      const uniqueSlug = baseSlug + '-' + Math.random().toString(36).slice(2, 6)
+      const t2 = await client.query(
+        `INSERT INTO tenants(slug, name, plan, status) VALUES ($1,$2,'free','active') RETURNING id`,
+        [uniqueSlug, name]
+      )
+      createdTenantId = t2.rows[0].id
+    }
+
+    // Provision roles and assign owner
+    await ensureDefaultRoles(client, createdTenantId)
+    const owner = await client.query(`SELECT id FROM roles WHERE tenant_id = $1 AND code = 'owner'`, [createdTenantId])
+    await client.query(
+      `INSERT INTO user_tenants(user_id, tenant_id, status) VALUES ($1,$2,'active')
+       ON CONFLICT (user_id, tenant_id) DO NOTHING`,
+      [userId, createdTenantId]
+    )
+    await client.query(
+      `INSERT INTO user_roles(user_id, tenant_id, role_id) VALUES ($1,$2,$3)
+       ON CONFLICT (user_id, tenant_id, role_id) DO NOTHING`,
+      [userId, createdTenantId, owner.rows[0].id]
+    )
+
+    await client.query('COMMIT')
+    // Issue fresh tokens bound to the new tenant
+    const tokens = await issueSessionAndTokens(client, userId, createdTenantId)
+    return res.status(201).json({ tenant_id: createdTenantId, tokens })
+  } catch (e) {
+    await client.query('ROLLBACK')
+    console.error('create-tenant error', e)
+    return res.status(500).json({ error: 'CREATE_TENANT_FAILED' })
   } finally {
     client.release()
   }

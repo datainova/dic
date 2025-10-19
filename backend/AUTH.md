@@ -8,8 +8,7 @@ Endpoints
   - Body: { "email": "user@empresa.com" }
   - Ações:
     - Upsert do usuário (is_active=false se novo).
-    - Cria um tenant Free (slug derivado do e-mail) se o usuário não tiver tenant; aplica roles padrão e vincula como owner.
-    - Emite token de verificação (24h) e envia link por e-mail (em dev, loga no console).
+    - Não cria tenant nesta etapa. Emite token de verificação (24h) e envia link por e-mail (em dev, loga no console).
   - Response 200: { ok: true, dev_link?: "http://localhost:4000/auth/verify-email?..." }
 
 - POST /auth/login-email
@@ -20,13 +19,19 @@ Endpoints
 - GET /auth/verify-email?token=...&redirect=http://localhost:5173/auth/callback
   - Ações:
     - Valida token (purpose=verify_email), ativa o usuário e garante identidade local (provider_uid=email).
-    - Cria session + refresh_token (hash em DB), emite access_token (15m).
+    - Se o usuário já possuir tenant, seta RLS e emite tokens ligados a esse tenant.
+    - Caso contrário, emite tokens sem tenant (ten ausente). O app deve chamar POST /tenants para o onboarding do workspace.
     - Se redirect informado, redireciona para o front com tokens no hash: #access_token=...&refresh_token=...
   - Response 200 (se sem redirect): { access_token, refresh_token, expires_in }
 
 - GET /me (protegido)
   - Header: Authorization: Bearer <access_token>
-  - Retorna: { user, tenant, roles }
+  - Retorna: { user, tenant, roles } — quando não houver tenant, retorna tenant=null e roles=[].
+
+- POST /tenants (protegido)
+  - Body: { name: string, slug?: string }
+  - Ações: cria tenant Free com slug único, provisiona roles padrão, vincula usuário como owner e retorna novos tokens já ligados ao tenant.
+  - Response 201: { tenant_id, tokens: { access_token, refresh_token, expires_in } }
 
 - POST /auth/set-password (protegido)
   - Body: { password: string, current_password?: string }

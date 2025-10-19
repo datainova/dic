@@ -152,6 +152,27 @@ export default function App(){
     setProfile(p)
   }
 
+  async function createTenant(e: React.FormEvent) {
+    e.preventDefault()
+    const token = localStorage.getItem('access_token')
+    if (!token) { setMessage('Você precisa estar autenticado.'); return }
+    const name = (document.getElementById('tenant_name') as HTMLInputElement)?.value || ''
+    const res = await fetch(`${apiBase}/tenants`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name })
+    })
+    const data = await res.json().catch(()=>({}))
+    if (res.ok) {
+      localStorage.setItem('access_token', data.tokens.access_token)
+      localStorage.setItem('refresh_token', data.tokens.refresh_token)
+      setMessage('Espaço criado com sucesso.')
+      await loadProfile()
+    } else {
+      setMessage(`Erro: ${data.error || 'Falha ao criar espaço'}`)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
       {isAuthed ? (
@@ -220,6 +241,20 @@ export default function App(){
               <button onClick={loadProfile} className="rounded-md bg-slate-900 text-white px-4 py-2 hover:bg-slate-800">Carregar perfil</button>
               <button onClick={() => { localStorage.clear(); location.href = '/' }} className="rounded-md border border-slate-300 px-4 py-2 text-slate-700 hover:bg-slate-50">Sair</button>
             </div>
+            {!profile?.tenant && (
+              <div className="mt-6 bg-white rounded-xl shadow ring-1 ring-black/5 p-4 max-w-md">
+                <h3 className="font-medium mb-2">Criar seu espaço de trabalho</h3>
+                <p className="text-sm text-slate-600 mb-3">Defina o nome do seu workspace. Você será o owner (plano Free).</p>
+                <form onSubmit={createTenant} className="space-y-3">
+                  <label className="block text-sm">
+                    <span className="text-slate-700">Nome do espaço</span>
+                    <input id="tenant_name" type="text" required placeholder="Ex.: DataInova"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                  </label>
+                  <button className="rounded-md bg-brand-600 text-white px-4 py-2 hover:bg-brand-700">Criar espaço</button>
+                </form>
+              </div>
+            )}
             <div className="mt-6 bg-white rounded-xl shadow ring-1 ring-black/5 p-4 max-w-md">
               <h3 className="font-medium mb-2">Definir/alterar senha</h3>
               <form onSubmit={submitSetPassword} className="space-y-3">
