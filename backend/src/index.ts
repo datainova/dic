@@ -14,10 +14,15 @@ app.use(express.json())
 
 // Minimal CORS for local dev
 app.use((req, res, next) => {
-  const origin = process.env.WEBAPP_BASE_URL || 'http://localhost:5173'
+  const reqOrigin = String(req.headers.origin || '')
+  const webapp = process.env.WEBAPP_BASE_URL || 'http://localhost:5173'
+  const localRegex = /^https?:\/\/(localhost|127\.0\.0\.1)(:\\d+)?$/
+  const allowAnyLocal = localRegex.test(reqOrigin)
+  const origin = allowAnyLocal ? reqOrigin : webapp
   res.header('Access-Control-Allow-Origin', origin)
+  res.header('Vary', 'Origin')
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
   if (req.method === 'OPTIONS') return res.sendStatus(204)
   next()
 })
@@ -26,6 +31,68 @@ app.use((req, res, next) => {
 const connStr = process.env.DATABASE_URL
 const useSSL = (process.env.DATABASE_SSL === 'true') || (process.env.PGSSLMODE === 'require') || (connStr?.includes('aivencloud.com') ?? false)
 const pool = new Pool({ connectionString: connStr, ssl: useSSL ? { rejectUnauthorized: false } : undefined })
+
+// Ensure minimal DDL for onboarding (idempotent; avoids external migration step in dev)
+async function ensureOnboardingDDL() {
+  if (!process.env.DATABASE_URL) return
+  const client = await pool.connect()
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS onboarding_states (
+        user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        current_step text NOT NULL DEFAULT 'workspace',
+        data jsonb NOT NULL DEFAULT '{}'::jsonb,
+        completed boolean NOT NULL DEFAULT false,
+        started_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+    `)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tenant_profiles (
+        tenant_id uuid PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+        country text NOT NULL,
+        company_name text NOT NULL,
+        segment text NOT NULL,
+        segment_other text,
+        company_size text NOT NULL,
+        mission text NOT NULL,
+        vision text NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+    `)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS injection_jobs (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+        source text NOT NULL,
+        subject text NOT NULL,
+        payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+        input_text text NOT NULL,
+        idempotency_key text,
+        content_hash text,
+        embedding_provider text,
+        status text NOT NULL DEFAULT 'pending',
+        priority smallint NOT NULL DEFAULT 5,
+        attempts int NOT NULL DEFAULT 0,
+        vector_store_key text,
+        last_error text,
+        started_at timestamptz,
+        finished_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+    `)
+    await client.query(`CREATE INDEX IF NOT EXISTS injection_jobs_tenant_status_idx ON injection_jobs (tenant_id, status, created_at);`)
+    await client.query(`CREATE INDEX IF NOT EXISTS injection_jobs_priority_idx ON injection_jobs (tenant_id, status, priority, created_at);`)
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS injection_jobs_active_subject_uidx ON injection_jobs (tenant_id, subject) WHERE status IN ('pending','processing');`)
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS injection_jobs_idempotency_uidx ON injection_jobs (tenant_id, subject, idempotency_key) WHERE idempotency_key IS NOT NULL;`)
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS injection_jobs_content_uidx ON injection_jobs (tenant_id, subject, content_hash, embedding_provider) WHERE content_hash IS NOT NULL;`)
+  } catch (e) {
+    console.error('ensureOnboardingDDL error', e)
+  } finally { client.release() }
+}
 
 // JWT utils (RS256 if configured, otherwise HS256 dev secret)
 const hasRSKeys = !!(process.env.JWT_PRIVATE_KEY && process.env.JWT_PUBLIC_KEY)
@@ -62,6 +129,20 @@ function verifyJWT(token: string) {
 }
 
 // Helpers
+const STEP_ORDER = ['workspace','country','companyName','segment','size','mission','vision','review'] as const
+type StepId = typeof STEP_ORDER[number]
+const SEGMENTS = ['Tecnologia','Agronegócio','Indústria','Varejo','Serviços','Saúde','Educação','Financeiro','Logística','Construção','Governo','Outro']
+const COMPANY_SIZES = ['Microempresa','Pequena empresa','Média empresa','Grande porte','Multinacional']
+
+function normalizeSlug(input: string) {
+  return input.toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g,'').slice(0,50)
+}
+
+function assertLength(v: string, min: number, max: number) {
+  const s = (v||'').trim()
+  return s.length >= min && s.length <= max
+}
+
 async function ensurePermissions(client: any) {
   const permissions = [
     ['kpi:read', 'Ler indicadores'],
@@ -119,6 +200,34 @@ async function ensureDefaultRoles(client: any, tenantId: string) {
 
 function randomToken(size = 32) {
   return crypto.randomBytes(size).toString('base64url')
+}
+
+function sha256Hex(text: string) {
+  return crypto.createHash('sha256').update(text, 'utf8').digest('hex')
+}
+
+function buildOnboardingInputText(d: any) {
+  const parts: string[] = []
+  if (d.workspaceName) parts.push(`Workspace: ${d.workspaceName}${d.workspaceSlug ? ` (slug: ${d.workspaceSlug})` : ''}.`)
+  if (d.companyName) parts.push(`Empresa: ${d.companyName}.`)
+  if (d.country) parts.push(`País: ${d.country}.`)
+  if (d.segment) parts.push(`Segmento: ${d.segment}${d.segment === 'Outro' && d.segmentOther ? ` — ${d.segmentOther}` : ''}.`)
+  if (d.companySize) parts.push(`Porte: ${d.companySize}.`)
+  if (d.mission) parts.push(`Missão: ${d.mission}`)
+  if (d.vision) parts.push(`Visão: ${d.vision}`)
+  return parts.join('\n')
+}
+
+async function enqueueIngestionJob(client: any, tenantId: string, userId: string, subject: string, payload: any, inputText: string) {
+  const idempotency = `ten:${tenantId}:sub:${subject}:hash:${sha256Hex(inputText)}`
+  const contentHash = sha256Hex(inputText)
+  const provider = process.env.EMBEDDING_PROVIDER || 'openai'
+  await client.query(
+    `INSERT INTO injection_jobs(tenant_id, user_id, source, subject, payload, input_text, idempotency_key, content_hash, embedding_provider, status, priority)
+     VALUES ($1,$2,'onboarding',$3,$4,$5,$6,$7,$8,'pending',5)
+     ON CONFLICT DO NOTHING`,
+    [tenantId, userId, subject, payload, inputText, idempotency, contentHash, provider]
+  )
 }
 
 async function issueSessionAndTokens(client: any, userId: string, tenantId?: string | null) {
@@ -323,6 +432,27 @@ app.post('/auth/reset-password', async (req, res) => {
   }
 })
 
+// OAuth/OIDC starts (stubs that redirect if configured)
+app.get('/auth/oauth/google/start', (req, res) => {
+  const base = process.env.GOOGLE_OAUTH_START_URL // e.g., your IdP authorize URL
+  const redirect = (req.query.redirect as string) || process.env.WEBAPP_BASE_URL
+  if (!base) return res.status(501).json({ error: 'SSO_NOT_CONFIGURED' })
+  const url = new URL(base)
+  if (redirect) url.searchParams.set('redirect_uri', redirect)
+  return res.redirect(url.toString())
+})
+
+app.get('/auth/sso/start', (req, res) => {
+  const base = process.env.SSO_START_URL // generic SSO start (SAML or broker)
+  const redirect = (req.query.redirect as string) || process.env.WEBAPP_BASE_URL
+  const email = (req.query.email as string) || ''
+  if (!base) return res.status(501).json({ error: 'SSO_NOT_CONFIGURED' })
+  const url = new URL(base)
+  if (redirect) url.searchParams.set('redirect_uri', redirect)
+  if (email) url.searchParams.set('login_hint', email)
+  return res.redirect(url.toString())
+})
+
 // Login via email link (for existing users); identical to register but no tenant creation
 app.post('/auth/login-email', async (req, res) => {
   const email = (req.body?.email || '').toString().trim().toLowerCase()
@@ -417,6 +547,256 @@ app.get('/my/tenants', async (req, res) => {
   }
 })
 
+// Onboarding — state by user
+app.get('/me/onboarding-state', async (req, res) => {
+  const auth = (req.headers['authorization'] || '').toString()
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+  if (!token) return res.status(401).json({ error: 'NO_TOKEN' })
+  let payload: any
+  try { payload = verifyJWT(token) } catch { return res.status(401).json({ error: 'TOKEN_INVALID' }) }
+  const userId: string = payload.sub
+  const client = await pool.connect()
+  try {
+    // If user already linked to a tenant, onboarding is not first access
+    const ut = await client.query(`SELECT 1 FROM user_tenants WHERE user_id = $1 LIMIT 1`, [userId])
+    if (ut.rowCount) return res.json({ firstAccess: false })
+    const st = await client.query(`SELECT current_step, data, completed, started_at, updated_at FROM onboarding_states WHERE user_id = $1`, [userId])
+    if (!st.rowCount) {
+      return res.json({ firstAccess: true, state: { current_step: 'workspace', data: {}, completed: false, progress: 0 } })
+    }
+    const current_step: StepId = st.rows[0].current_step
+    const idx = Math.max(0, STEP_ORDER.indexOf(current_step))
+    const progress = Math.round((idx / (STEP_ORDER.length)) * 100)
+    return res.json({ firstAccess: !st.rows[0].completed, state: { ...st.rows[0], progress } })
+  } catch (e) {
+    console.error('onboarding-state error', e)
+    return res.status(500).json({ error: 'ONBOARDING_STATE_FAILED' })
+  } finally { client.release() }
+})
+
+// Real-time slug availability
+app.get('/onboarding/slug-availability', async (req, res) => {
+  const slugRaw = (req.query.slug || '').toString()
+  const slug = normalizeSlug(slugRaw)
+  if (!slug || slug.length < 2) return res.json({ available: false, reason: 'INVALID' })
+  const client = await pool.connect()
+  try {
+    const q = await client.query(`SELECT 1 FROM tenants WHERE slug = $1`, [slug])
+    return res.json({ available: q.rowCount === 0, slug })
+  } catch (e) {
+    console.error('slug-availability error', e)
+    return res.status(500).json({ error: 'SLUG_CHECK_FAILED' })
+  } finally { client.release() }
+})
+
+// Save step (autosave on advance)
+app.put('/onboarding/steps/:stepId', async (req, res) => {
+  const auth = (req.headers['authorization'] || '').toString()
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+  if (!token) return res.status(401).json({ error: 'NO_TOKEN' })
+  let payload: any
+  try { payload = verifyJWT(token) } catch { return res.status(401).json({ error: 'TOKEN_INVALID' }) }
+  const userId: string = payload.sub
+  const stepId = (req.params.stepId || '').toString() as StepId
+  if (!STEP_ORDER.includes(stepId)) return res.status(400).json({ code: 'INVALID_STEP', message: 'Passo inválido.' })
+
+  const body = req.body || {}
+  const fieldErrors: Record<string,string> = {}
+  const updates: any = {}
+
+  if (stepId === 'workspace') {
+    const name = (body.workspaceName || '').toString()
+    const slugIn = (body.workspaceSlug || '').toString()
+    if (!assertLength(name, 2, 50)) fieldErrors.workspaceName = 'Informe de 2 a 50 caracteres.'
+    let slug = slugIn ? normalizeSlug(slugIn) : normalizeSlug(name)
+    if (!assertLength(slug, 2, 50)) fieldErrors.workspaceSlug = 'Slug inválido.'
+    if (Object.keys(fieldErrors).length) return res.status(422).json({ code:'VALIDATION', message:'Verifique os campos', fieldErrors })
+    updates.workspaceName = name.trim()
+    updates.workspaceSlug = slug
+  }
+  if (stepId === 'country') {
+    const country = (body.country || '').toString().trim()
+    if (!country) fieldErrors.country = 'Selecione um país.'
+    if (Object.keys(fieldErrors).length) return res.status(422).json({ code:'VALIDATION', message:'Verifique os campos', fieldErrors })
+    updates.country = country
+  }
+  if (stepId === 'companyName') {
+    const companyName = (body.companyName || '').toString()
+    if (!assertLength(companyName, 2, 100)) fieldErrors.companyName = 'Informe de 2 a 100 caracteres.'
+    if (Object.keys(fieldErrors).length) return res.status(422).json({ code:'VALIDATION', message:'Verifique os campos', fieldErrors })
+    updates.companyName = companyName.trim()
+  }
+  if (stepId === 'segment') {
+    const segment = (body.segment || '').toString()
+    const other = (body.segmentOther || '').toString()
+    if (!SEGMENTS.includes(segment)) fieldErrors.segment = 'Selecione um segmento.'
+    if (segment === 'Outro' && !assertLength(other, 2, 40)) fieldErrors.segmentOther = 'Descreva entre 2 e 40 caracteres.'
+    if (Object.keys(fieldErrors).length) return res.status(422).json({ code:'VALIDATION', message:'Verifique os campos', fieldErrors })
+    updates.segment = segment
+    if (segment === 'Outro') updates.segmentOther = other.trim()
+    else updates.segmentOther = null
+  }
+  if (stepId === 'size') {
+    const companySize = (body.companySize || '').toString()
+    if (!COMPANY_SIZES.includes(companySize)) fieldErrors.companySize = 'Selecione o porte.'
+    if (Object.keys(fieldErrors).length) return res.status(422).json({ code:'VALIDATION', message:'Verifique os campos', fieldErrors })
+    updates.companySize = companySize
+  }
+  if (stepId === 'mission') {
+    const mission = (body.mission || '').toString().trim()
+    if (!assertLength(mission, 20, 500)) fieldErrors.mission = 'Digite entre 20 e 500 caracteres.'
+    if (Object.keys(fieldErrors).length) return res.status(422).json({ code:'VALIDATION', message:'Verifique os campos', fieldErrors })
+    updates.mission = mission
+  }
+  if (stepId === 'vision') {
+    const vision = (body.vision || '').toString().trim()
+    if (!assertLength(vision, 20, 500)) fieldErrors.vision = 'Digite entre 20 e 500 caracteres.'
+    if (Object.keys(fieldErrors).length) return res.status(422).json({ code:'VALIDATION', message:'Verifique os campos', fieldErrors })
+    updates.vision = vision
+  }
+  if (stepId === 'review') {
+    // no-op, only marks current step and keeps merged data
+  }
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    // Upsert onboarding state, merge data
+    const sel = await client.query(`SELECT data FROM onboarding_states WHERE user_id = $1`, [userId])
+    const merged = { ...(sel.rowCount ? sel.rows[0].data || {} : {}), ...updates }
+    const now = new Date()
+    await client.query(
+      `INSERT INTO onboarding_states(user_id, current_step, data, completed, started_at, updated_at)
+       VALUES ($1,$2,$3,false, now(), $4)
+       ON CONFLICT (user_id) DO UPDATE
+         SET current_step = EXCLUDED.current_step,
+             data = EXCLUDED.data,
+             updated_at = EXCLUDED.updated_at`,
+      [userId, stepId, merged, now]
+    )
+    await client.query('COMMIT')
+
+    const idx = Math.max(0, STEP_ORDER.indexOf(stepId))
+    const progress = Math.round((idx / (STEP_ORDER.length)) * 100)
+    return res.json({ current_step: stepId, data: merged, completed: false, progress })
+  } catch (e) {
+    await client.query('ROLLBACK')
+    console.error('onboarding-step error', e)
+    return res.status(500).json({ error: 'ONBOARDING_STEP_FAILED' })
+  } finally { client.release() }
+})
+
+// Complete onboarding: creates tenant + profile, links user, issues tokens and marks completed
+app.post('/onboarding/complete', async (req, res) => {
+  const auth = (req.headers['authorization'] || '').toString()
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+  if (!token) return res.status(401).json({ error: 'NO_TOKEN' })
+  let payload: any
+  try { payload = verifyJWT(token) } catch { return res.status(401).json({ error: 'TOKEN_INVALID' }) }
+  const userId: string = payload.sub
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const st = await client.query(`SELECT data FROM onboarding_states WHERE user_id = $1`, [userId])
+    if (!st.rowCount) { await client.query('ROLLBACK'); return res.status(400).json({ code:'NO_STATE', message:'Onboarding não iniciado.' }) }
+    const d = st.rows[0].data || {}
+    const errors: Record<string,string> = {}
+    // Validate all
+    if (!assertLength(d.workspaceName || '', 2, 50)) errors.workspaceName = 'Informe de 2 a 50 caracteres.'
+    const finalSlug = normalizeSlug(d.workspaceSlug || d.workspaceName || '')
+    if (!assertLength(finalSlug, 2, 50)) errors.workspaceSlug = 'Slug inválido.'
+    if (!assertLength(d.companyName || '', 2, 100)) errors.companyName = 'Informe de 2 a 100 caracteres.'
+    if (!d.country) errors.country = 'Selecione um país.'
+    if (!SEGMENTS.includes(d.segment || '')) errors.segment = 'Segmento inválido.'
+    if ((d.segment || '') === 'Outro' && !assertLength(d.segmentOther || '', 2, 40)) errors.segmentOther = 'Descreva entre 2 e 40 caracteres.'
+    if (!COMPANY_SIZES.includes(d.companySize || '')) errors.companySize = 'Selecione o porte.'
+    if (!assertLength(d.mission || '', 20, 500)) errors.mission = 'Missão inválida.'
+    if (!assertLength(d.vision || '', 20, 500)) errors.vision = 'Visão inválida.'
+    if (Object.keys(errors).length) { await client.query('ROLLBACK'); return res.status(422).json({ code:'VALIDATION', message:'Verifique os campos', fieldErrors: errors }) }
+
+    // Create tenant
+    let slug = finalSlug
+    let createdTenantId: string | null = null
+    const t1 = await client.query(
+      `INSERT INTO tenants(slug, name, plan, status) VALUES ($1,$2,'free','active')
+       ON CONFLICT (slug) DO NOTHING RETURNING id`,
+      [slug, d.workspaceName]
+    )
+    if (t1.rowCount) createdTenantId = t1.rows[0].id
+    else {
+      slug = `${finalSlug}-${Math.random().toString(36).slice(2,6)}`
+      const t2 = await client.query(
+        `INSERT INTO tenants(slug, name, plan, status) VALUES ($1,$2,'free','active') RETURNING id`,
+        [slug, d.workspaceName]
+      )
+      createdTenantId = t2.rows[0].id
+    }
+
+    // Provision roles and add owner
+    await ensurePermissions(client)
+    await ensureDefaultRoles(client, createdTenantId!)
+    const owner = await client.query(`SELECT id FROM roles WHERE tenant_id = $1 AND code = 'owner'`, [createdTenantId!])
+    await client.query(
+      `INSERT INTO user_tenants(user_id, tenant_id, status) VALUES ($1,$2,'active')
+       ON CONFLICT (user_id, tenant_id) DO NOTHING`, [userId, createdTenantId!]
+    )
+    await client.query(
+      `INSERT INTO user_roles(user_id, tenant_id, role_id) VALUES ($1,$2,$3)
+       ON CONFLICT (user_id, tenant_id, role_id) DO NOTHING`, [userId, createdTenantId!, owner.rows[0].id]
+    )
+
+    // Save tenant profile
+    await client.query(
+      `INSERT INTO tenant_profiles(tenant_id, country, company_name, segment, segment_other, company_size, mission, vision)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (tenant_id) DO UPDATE SET country = EXCLUDED.country, company_name = EXCLUDED.company_name,
+         segment = EXCLUDED.segment, segment_other = EXCLUDED.segment_other, company_size = EXCLUDED.company_size,
+         mission = EXCLUDED.mission, vision = EXCLUDED.vision, updated_at = now()`,
+      [createdTenantId!, d.country, d.companyName, d.segment, d.segment === 'Outro' ? (d.segmentOther || null) : null, d.companySize, d.mission, d.vision]
+    )
+
+    // Mark onboarding completed
+    await client.query(`UPDATE onboarding_states SET completed = true, updated_at = now() WHERE user_id = $1`, [userId])
+
+    await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [createdTenantId])
+    // Enqueue ingestion job for embeddings (wizard profile)
+    const inputText = buildOnboardingInputText(d)
+    await enqueueIngestionJob(client, createdTenantId, userId, 'wizard_profile', d, inputText)
+
+    const tokens = await issueSessionAndTokens(client, userId, createdTenantId)
+    await client.query('COMMIT')
+    return res.json({ ok: true, tenant_id: createdTenantId, tokens })
+  } catch (e) {
+    await client.query('ROLLBACK')
+    console.error('onboarding-complete error', e)
+    return res.status(500).json({ error: 'ONBOARDING_COMPLETE_FAILED' })
+  } finally { client.release() }
+})
+
+// Telemetry (lightweight): record onboarding events into audit_logs
+app.post('/telemetry/onboarding', async (req, res) => {
+  const auth = (req.headers['authorization'] || '').toString()
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+  if (!token) return res.status(401).json({ error: 'NO_TOKEN' })
+  let payload: any
+  try { payload = verifyJWT(token) } catch { return res.status(401).json({ error: 'TOKEN_INVALID' }) }
+  const userId: string = payload.sub
+  const { event, step, duration_ms } = (req.body || {})
+  const client = await pool.connect()
+  try {
+    await client.query(
+      `INSERT INTO audit_logs(tenant_id, actor_user_id, action, target_type, target_id, metadata)
+       VALUES (NULL, $1, $2, 'onboarding', $3, $4)`,
+      [userId, String(event || 'onboarding_event'), String(step || ''), { duration_ms: Number(duration_ms||0) }]
+    )
+    return res.json({ ok: true })
+  } catch (e) {
+    console.error('telemetry-onboarding error', e)
+    return res.status(500).json({ error: 'TELEMETRY_FAILED' })
+  } finally { client.release() }
+})
+
 // Switch active tenant (issues new tokens tied to chosen tenant)
 app.post('/auth/switch-tenant', async (req, res) => {
   const auth = (req.headers['authorization'] || '').toString()
@@ -494,7 +874,7 @@ app.post('/tenants', async (req, res) => {
     }
 
     // Provision roles and assign owner
-    await ensureDefaultRoles(client, createdTenantId)
+    await ensureDefaultRoles(client, createdTenantId!)
     const owner = await client.query(`SELECT id FROM roles WHERE tenant_id = $1 AND code = 'owner'`, [createdTenantId])
     await client.query(
       `INSERT INTO user_tenants(user_id, tenant_id, status) VALUES ($1,$2,'active')
@@ -600,6 +980,7 @@ const PORT = process.env.PORT || 4000
 if (require.main === module) {
 	app.listen(PORT, () => {
 		console.log(`Backend listening on ${PORT}`)
+		ensureOnboardingDDL().then(()=>console.log('[DB] Onboarding tables ensured')).catch(()=>{})
 		if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
 			console.log('[Email] SMTP not configured; using dev console fallback. Set SMTP_HOST/SMTP_USER/SMTP_PASS to send real emails.')
 		}

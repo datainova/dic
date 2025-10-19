@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import LogoWhite from './image/white_icon_transparent_background.png'
+import Wizard from './onboarding/Wizard'
+import type { OnboardingState } from './onboarding/types'
 
 
 function parseHash() {
@@ -19,8 +20,10 @@ function storeTokensFromHash() {
   if (params.access_token && params.refresh_token) {
     localStorage.setItem('access_token', params.access_token)
     localStorage.setItem('refresh_token', params.refresh_token)
-    // clear hash for cleanliness
-    history.replaceState(null, '', window.location.pathname)
+    // clear any paused onboarding flag on fresh login
+    localStorage.removeItem('onboarding_paused_session')
+    // clear hash and normalize path to home for a clean URL
+    history.replaceState(null, '', '/')
   }
 }
 
@@ -39,12 +42,13 @@ function useAuth() {
 }
 
 function Header({ onSignOut }: { onSignOut(): void }){
+  const logoUrl = new URL('./image/white_icon_transparent_background.png', import.meta.url).href
   return (
-    <header className="w-full border-b border-white/10 bg-brand-600">
+    <header className="w-full border-b border-white/10 bg-black">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 bg-white text-brand-600 px-3 py-1 rounded">Pular para conteúdo</a>
       <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <img src={LogoWhite} alt="DataInova" className="h-7 w-7" />
+          <img src={logoUrl} alt="DataInova" className="h-10 w-auto object-contain" />
           <span className="font-semibold tracking-tight text-white font-display">DataInova Connect</span>
         </div>
         <div className="flex items-center gap-3">
@@ -71,6 +75,7 @@ export default function App(){
   // consume tokens from backend redirect if present
   useMemo(() => { storeTokensFromHash() }, [])
   const { isAuthed, me, apiBase } = useAuth()
+  const isCallback = typeof window !== 'undefined' && window.location.pathname.startsWith('/auth/callback')
   const [email, setEmail] = useState('')
   // Login-first experience (no self-registration in UI)
   const [mode] = useState<'login'|'register'>('login')
@@ -83,7 +88,12 @@ export default function App(){
   const [loginMode, setLoginMode] = useState<'link'|'password'>('link')
   const [showForgot, setShowForgot] = useState(false)
   const [resetToken, setResetToken] = useState<string | null>(null)
+  const [emailAction, setEmailAction] = useState<'register'|'loginLink'>('loginLink')
   const redirectUri = typeof window !== 'undefined' ? `${location.origin}/auth/callback` : ''
+  const [onb, setOnb] = useState<{ firstAccess: boolean; state?: OnboardingState } | null>(null)
+  const [showOnb, setShowOnb] = useState(false)
+  const [onbLoading, setOnbLoading] = useState(false)
+  const [showSuccess, setShowSuccess] = useState(false)
 
   function startGoogleSSO(){
     window.location.href = `${apiBase}/auth/oauth/google/start?redirect=${encodeURIComponent(redirectUri)}`
@@ -104,14 +114,15 @@ export default function App(){
     setMessage('')
     setLoading(true)
     try {
-      const res = await fetch(`${apiBase}/auth/login-email`, {
+      const endpoint = emailAction === 'register' ? '/auth/register' : '/auth/login-email'
+      const res = await fetch(`${apiBase}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
       })
       const data = await res.json()
       if (res.ok) {
-        setMessage('Enviamos um link de acesso para seu e-mail.')
+        setMessage(emailAction === 'register' ? 'Enviamos um link de cadastro para seu e-mail.' : 'Enviamos um link de acesso para seu e-mail.')
         if (data.dev_link) setDevLink(data.dev_link)
       } else {
         setMessage(`Erro: ${data.error || 'Falha ao enviar link'}`)
@@ -194,8 +205,26 @@ export default function App(){
   }
 
   async function loadProfile() {
-    const p = await me()
-    setProfile(p)
+    setOnbLoading(true)
+    try {
+      const p = await me()
+      setProfile(p)
+      // Check onboarding state post-auth
+      const token = localStorage.getItem('access_token')
+      if (token) {
+        try {
+          const res = await fetch(`${apiBase}/me/onboarding-state`, { headers: { Authorization: `Bearer ${token}` } })
+          const data = await res.json().catch(()=>({}))
+          if (res.ok) {
+            setOnb(data)
+            const paused = localStorage.getItem('onboarding_paused_session') === 'true'
+            setShowOnb(Boolean(data.firstAccess) && !paused)
+          }
+        } catch {}
+      }
+    } finally {
+      setOnbLoading(false)
+    }
   }
 
   async function loadTenants() {
@@ -256,26 +285,39 @@ export default function App(){
       if (h.reset_token) setResetToken(h.reset_token)
     } catch {}
   }, [])
+  // Normalize callback path to home even when hash is gone (refresh scenario)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/auth/callback')) {
+      history.replaceState(null, '', '/')
+    }
+  }, [])
+
+  // Auto-carregar perfil ao autenticar (inclusive após callback com tokens no hash)
+  useEffect(() => {
+    if (isAuthed) { loadProfile() }
+  }, [isAuthed])
 
   return (
-    <div className="min-h-screen bg-brand-600 relative overflow-hidden">
-      <div className="bg-blob one top-20 -left-16" />
-      <div className="bg-blob two bottom-10 -right-16" />
+    <div className="min-h-screen bg-black relative overflow-hidden">
+      {!isAuthed && isCallback && <CallbackBackdrop />}
       {isAuthed ? (
         <Header onSignOut={() => { localStorage.clear(); location.href = '/' }} />
       ) : (
         <div className="h-14" />
       )}
+      {isAuthed && !showOnb && (onbLoading || !onb) && (
+        <HeroBackdrop message="Preparando seu ambiente…" />
+      )}
       <main id="main" className="max-w-6xl mx-auto px-6 py-12 grid place-items-center">
         {!isAuthed ? (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10 items-center w-full">
             <section className="hidden xl:block">
-              <h1 className="text-4xl font-bold tracking-tight text-slate-900 dark:text-white">Acesse a plataforma DataInova</h1>
-              <p className="mt-3 text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl">Entre sem senha usando um link mágico ou autentique‑se por senha. Após verificar seu e‑mail, crie o seu espaço de trabalho (Free) e convide sua equipe.</p>
-              <ul className="mt-6 space-y-2 text-slate-700 dark:text-slate-300">
-                <li className="flex items-center gap-2"><span className="h-5 w-5 rounded-full bg-brand-100 text-brand-700 grid place-items-center text-xs">✓</span> Login seguro e prático</li>
-                <li className="flex items-center gap-2"><span className="h-5 w-5 rounded-full bg-brand-100 text-brand-700 grid place-items-center text-xs">✓</span> Espaços multi‑tenant com RLS</li>
-                <li className="flex items-center gap-2"><span className="h-5 w-5 rounded-full bg-brand-100 text-brand-700 grid place-items-center text-xs">✓</span> RBAC por roles e permissões</li>
+              <h1 className="text-4xl font-bold tracking-tight text-white font-display">Acesse a plataforma DataInova</h1>
+              <p className="mt-3 text-white/70 leading-relaxed max-w-xl">Entre sem senha usando um link mágico ou autentique‑se por senha. Após verificar seu e‑mail, crie o seu espaço de trabalho (Free) e convide sua equipe.</p>
+              <ul className="mt-6 space-y-2 text-white/80">
+                <li className="flex items-center gap-2"><span className="h-5 w-5 rounded-full bg-white/10 text-white grid place-items-center text-xs">✓</span> Login seguro e prático</li>
+                <li className="flex items-center gap-2"><span className="h-5 w-5 rounded-full bg-white/10 text-white grid place-items-center text-xs">✓</span> Espaços multi‑tenant com RLS</li>
+                <li className="flex items-center gap-2"><span className="h-5 w-5 rounded-full bg-white/10 text-white grid place-items-center text-xs">✓</span> RBAC por roles e permissões</li>
               </ul>
             </section>
             <section className="relative flex justify-center">
@@ -298,7 +340,7 @@ export default function App(){
                     </button>
                     <div className="relative">
                       <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"/></div>
-                      <div className="relative flex justify-center"><span className="bg-brand-600 px-2 text-xs text-white/60">ou</span></div>
+                      <div className="relative flex justify-center"><span className="bg-black px-2 text-xs text-white/60">ou</span></div>
                     </div>
                     <button onClick={startGenericSSO} className="w-full text-white hover:underline text-sm">Continuar com Single Sign‑On (SSO)</button>
                   </div>
@@ -329,7 +371,8 @@ export default function App(){
                     <button disabled={loading} type="submit" className="w-full rounded-lg bg-white text-brand-600 py-2.5 hover:bg-white/90 disabled:opacity-60">
                       {loading ? 'Entrando…' : 'Entrar'}
                     </button>
-                    <div className="flex items-center justify-end text-xs mt-1">
+                    <div className="flex items-center justify-between text-xs mt-1">
+                      <button type="button" onClick={()=>{ setLoginMode('link'); setEmailAction('register'); setShowForgot(false) }} className="text-white/80 hover:underline">Criar uma conta</button>
                       <button type="button" onClick={()=>setShowForgot(true)} className="text-white/80 hover:underline">Esqueci minha senha</button>
                     </div>
                   </form>
@@ -341,9 +384,10 @@ export default function App(){
                         className="mt-1 w-full rounded-lg border border-white/0 bg-white text-brand-600 px-3 py-2 outline-none focus:ring-2 focus:ring-white"/>
                     </label>
                     <button disabled={loading} type="submit" className="w-full rounded-lg bg-white text-brand-600 py-2.5 hover:bg-white/90 disabled:opacity-60">
-                      {loading ? 'Enviando…' : 'Enviar link de acesso'}
+                      {loading ? 'Enviando…' : (emailAction==='register' ? 'Enviar link de cadastro' : 'Enviar link de acesso')}
                     </button>
-                    <div className="flex items-center justify-end text-xs mt-1">
+                    <div className="flex items-center justify-between text-xs mt-1">
+                      <button type="button" onClick={()=>{ setEmailAction('register'); setShowForgot(false) }} className="text-white/80 hover:underline">Criar uma conta</button>
                       <button type="button" onClick={()=>setShowForgot(true)} className="text-white/80 hover:underline">Esqueci minha senha</button>
                     </div>
                   </form>
@@ -453,7 +497,92 @@ export default function App(){
           </div>
         )}
       </main>
+      {isAuthed && showOnb && onb?.state && (
+        <Wizard
+          apiBase={apiBase}
+          token={localStorage.getItem('access_token')!}
+          initial={onb.state}
+          onDismissForSession={() => { localStorage.setItem('onboarding_paused_session','true'); setShowOnb(false) }}
+          onCompleted={(tokens) => {
+            if (tokens) {
+              localStorage.setItem('access_token', tokens.access_token)
+              localStorage.setItem('refresh_token', tokens.refresh_token)
+            }
+            localStorage.removeItem('onboarding_paused_session')
+            setShowOnb(false); setShowSuccess(true); loadProfile()
+          }}
+        />
+      )}
+      {isAuthed && showSuccess && (
+        <SuccessOverlay onClose={() => setShowSuccess(false)} onGoDashboard={()=>{ setShowSuccess(false) }} />
+      )}
       <footer className="py-8 text-center text-xs text-white/50">© {new Date().getFullYear()} DataInova</footer>
+    </div>
+  )
+}
+
+function CallbackBackdrop(){
+  return (
+    <div className="fixed inset-0 z-40 bg-gradient-to-br from-brand-700 via-brand-600 to-black grid place-items-center">
+      <div className="text-center text-white">
+        <div className="mx-auto h-10 w-10 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden />
+        <p className="mt-3 text-sm">Validando acesso…</p>
+      </div>
+    </div>
+  )
+}
+
+function HeroBackdrop({ message }: { message?: string }){
+  const logoUrl = new URL('./image/white_icon_transparent_background.png', import.meta.url).href
+  return (
+    <div className="fixed inset-0 z-40 bg-gradient-to-br from-brand-700 via-brand-600 to-black grid place-items-center">
+      <div className="text-center text-white">
+        <img src={logoUrl} alt="DataInova" className="mx-auto w-16 h-16 opacity-90"/>
+        <h2 className="mt-2 font-semibold font-display">DataInova Connect</h2>
+        <p className="mt-1 text-sm text-white/80">{message || 'Carregando…'}</p>
+      </div>
+    </div>
+  )
+}
+
+function SuccessOverlay({ onClose, onGoDashboard }: { onClose(): void; onGoDashboard(): void }){
+  useEffect(() => {
+    // simple micro-confetti
+    const root = document.createElement('div')
+    root.style.position = 'fixed'; root.style.left = '0'; root.style.top = '0'; root.style.right = '0'; root.style.bottom = '0'; root.style.pointerEvents = 'none'
+    document.body.appendChild(root)
+    const pieces: HTMLDivElement[] = []
+    for (let i=0;i<24;i++){
+      const el = document.createElement('div')
+      el.style.position = 'absolute'
+      el.style.left = Math.random()*100+'%'
+      el.style.top = '-8px'
+      el.style.width = '6px'; el.style.height = '10px'
+      el.style.background = ['#2d2926','#9d9691','#5a534f','#bcb7b2'][i%4]
+      el.style.opacity = '0.9'; el.style.borderRadius = '2px'
+      el.animate([
+        { transform: 'translateY(0) rotate(0deg)', opacity: .9 },
+        { transform: `translateY(${(60+Math.random()*40)}vh) rotate(${Math.random()*360}deg)`, opacity: 0 }
+      ], { duration: 1400 + Math.random()*400, easing: 'ease-out', delay: i*20 })
+      root.appendChild(el)
+      pieces.push(el)
+    }
+    const t = setTimeout(() => { root.remove() }, 2200)
+    return () => { clearTimeout(t); try { root.remove() } catch {} }
+  }, [])
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center px-4" role="dialog" aria-modal="true">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl ring-1 ring-black/5 p-8 text-center">
+        <div className="mx-auto h-16 w-16 rounded-full bg-emerald-50 text-emerald-600 grid place-items-center">
+          <svg viewBox="0 0 24 24" className="h-9 w-9" aria-hidden><path fill="currentColor" d="M9 16.2l-3.5-3.6-1.4 1.4L9 19 20 8l-1.4-1.4z"/></svg>
+        </div>
+        <h3 className="mt-4 text-xl font-semibold text-slate-900 font-display">Workspace pronto!</h3>
+        <p className="mt-1 text-slate-600 text-sm">Sua configuração inicial foi concluída. Vamos ao Dashboard?</p>
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <button onClick={onGoDashboard} className="px-4 py-2 text-sm rounded-lg bg-brand-600 text-white hover:bg-brand-700">Ir para o Dashboard</button>
+          <a href="#" onClick={(e)=>{e.preventDefault(); onClose()}} className="text-sm text-slate-600 hover:text-slate-900">Convidar equipe</a>
+        </div>
+      </div>
     </div>
   )
 }

@@ -1,0 +1,38 @@
+version: '3.9'
+
+services:
+  chroma:
+    image: ghcr.io/chroma-core/chroma:latest
+    container_name: dic-chroma
+    ports:
+      - "8000:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+      - PERSIST_DIRECTORY=/chroma/data
+    volumes:
+      - ./.data/chroma:/chroma/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8000/api/v1/heartbeat || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  vectordb:
+    image: ankane/pgvector:latest
+    container_name: dic-vectordb
+    environment:
+      POSTGRES_USER: vector
+      POSTGRES_PASSWORD: vector
+      POSTGRES_DB: vector
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./.data/vectordb:/var/lib/postgresql/data
+      - ./backend/db/vector.sql:/docker-entrypoint-initdb.d/001-vector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vector"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

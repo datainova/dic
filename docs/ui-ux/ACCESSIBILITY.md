@@ -5,10 +5,9 @@ Accessibility and UX Notes
   - Text on light backgrounds uses Slate 900/700; on dark backgrounds uses Slate 100/300.
   - Focus states: all inputs and buttons include visible focus rings.
 
-- Dark Mode
-  - Tailwind configured with `darkMode: 'class'` (see `frontend/tailwind.config.cjs`).
-  - Initial theme is chosen from `localStorage.theme` or `prefers-color-scheme` to avoid FOUC (inline script in `frontend/index.html`).
-  - Toggle button persists preference and updates `document.documentElement.classList`.
+- Dark Mode (temporariamente desativado)
+  - O suporte visual permanece no CSS (classes `dark:`) para futura reativação.
+  - O toggle e o script de inicialização foram removidos; a UI opera apenas no tema claro por enquanto.
 
 - Keyboard Navigation
   - “Skip to content” link in the header (visible on focus).
@@ -22,4 +21,3 @@ Checklist
 - Sufficient hit area for interactive controls (≥ 32px in height).
 - No color-only information; text and icons provide meaning.
 - Components remain readable at 200% zoom.
-

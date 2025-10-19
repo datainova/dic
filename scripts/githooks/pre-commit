@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Block AppleDouble and DS_Store from being committed
+if git diff --cached --name-only | grep -E '(^|/)(\._[^/]+|\.DS_Store)$' >/dev/null; then
+  echo "[hook] Bloqueado: não comite arquivos ._* ou .DS_Store" >&2
+  git diff --cached --name-only | grep -E '(^|/)(\._[^/]+|\.DS_Store)$' >&2
+  exit 1
+fi
+exit 0

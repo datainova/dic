@@ -1,8 +1,15 @@
 node_modules/
 dist/
 .env
+**/.env
+worker/.env
 .DS_Store
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
 .vscode/
 /*.git
 ._*
 logs/
+.data/

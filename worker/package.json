@@ -3,13 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/worker.ts",
+    "dev": "ts-node-dev --respawn --transpile-only src/ingest.ts",
     "lint": "eslint . --ext .ts,.js",
     "test": "vitest"
   },
   "dependencies": {
+    "chromadb": "^1.8.1",
     "dotenv": "^16.0.0",
-    "ioredis": "^5.3.2"
+    "ioredis": "^5.3.2",
+    "langchain": "^0.2.14",
+    "openai": "^4.56.0",
+    "pg": "^8.11.0"
   },
   "devDependencies": {
     "@types/node": "^20.19.22",
@@ -19,7 +23,7 @@
     "@typescript-eslint/parser": "^6.21.0",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "eslint-config-prettier": "^9.1.0",
-    "prettier": "^3.9.0",
+    "prettier": "^3.3.3",
     "vitest": "^1.3.0"
   }
 }

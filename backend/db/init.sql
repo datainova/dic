@@ -186,6 +186,46 @@ CREATE TABLE agent_tokens (
 );
 
 -- =========================
+-- Ingestion/Embedding Jobs (worker)
+-- =========================
+CREATE TABLE injection_jobs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  source text NOT NULL CHECK (source IN ('onboarding','manual','api')),
+  subject text NOT NULL, -- ex.: wizard_profile
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb, -- dados brutos (perfil, campos)
+  input_text text NOT NULL, -- texto consolidado/normalizado para embedar
+  idempotency_key text, -- chave idempotente (cliente) para deduplicação
+  content_hash text, -- hash (ex.: sha256) do input_text para deduplicação
+  embedding_provider text, -- ex.: openai, local, etc.
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','completed','failed')),
+  priority smallint NOT NULL DEFAULT 5 CHECK (priority BETWEEN 1 AND 9),
+  attempts int NOT NULL DEFAULT 0,
+  vector_store_key text, -- id/chave no banco vetorial (opcional)
+  last_error text,
+  started_at timestamptz,
+  finished_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS injection_jobs_tenant_status_idx ON injection_jobs (tenant_id, status, created_at);
+CREATE INDEX IF NOT EXISTS injection_jobs_priority_idx ON injection_jobs (tenant_id, status, priority, created_at);
+-- Evita concorrência: apenas um job ativo por tenant+subject
+CREATE UNIQUE INDEX IF NOT EXISTS injection_jobs_active_subject_uidx
+  ON injection_jobs (tenant_id, subject)
+  WHERE status IN ('pending','processing');
+-- Idempotência: evita duplicar quando o cliente envia a mesma chave
+CREATE UNIQUE INDEX IF NOT EXISTS injection_jobs_idempotency_uidx
+  ON injection_jobs (tenant_id, subject, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+-- Deduplicação por hash de conteúdo e provedor
+CREATE UNIQUE INDEX IF NOT EXISTS injection_jobs_content_uidx
+  ON injection_jobs (tenant_id, subject, content_hash, embedding_provider)
+  WHERE content_hash IS NOT NULL;
+
+-- =========================
 -- Índices Principais
 -- =========================
 CREATE INDEX IF NOT EXISTS users_email_lower_idx ON users (lower(email));
@@ -203,6 +243,7 @@ ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE injection_jobs ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY p_tenant_isolation_roles ON roles
 USING (tenant_id = fn_current_tenant());
@@ -219,6 +260,9 @@ USING (tenant_id = fn_current_tenant());
 -- Audit logs: globais (tenant_id NULL) ou do tenant corrente
 CREATE POLICY p_tenant_isolation_audit ON audit_logs
 USING (tenant_id IS NULL OR tenant_id = fn_current_tenant());
+
+CREATE POLICY p_tenant_isolation_injection_jobs ON injection_jobs
+USING (tenant_id = fn_current_tenant());
 
 -- =========================
 -- Partições Mensais (cria partições do mês corrente e próximo)
@@ -248,3 +292,32 @@ BEGIN
 END $$;
 
 -- Fim do init
+-- =========================
+-- Onboarding e Perfil do Tenant
+-- =========================
+
+-- Progresso de onboarding por usuário (antes de existir tenant)
+CREATE TABLE IF NOT EXISTS onboarding_states (
+  user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  current_step text NOT NULL DEFAULT 'workspace',
+  data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  completed boolean NOT NULL DEFAULT false,
+  started_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Perfil estendido do tenant (dados da empresa)
+CREATE TABLE IF NOT EXISTS tenant_profiles (
+  tenant_id uuid PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+  country text NOT NULL,
+  company_name text NOT NULL,
+  segment text NOT NULL,
+  segment_other text,
+  company_size text NOT NULL,
+  mission text NOT NULL,
+  vision text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS onboarding_states_updated_idx ON onboarding_states (updated_at DESC);

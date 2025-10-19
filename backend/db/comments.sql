@@ -136,3 +136,46 @@ COMMENT ON COLUMN agent_tokens.last_seen_at IS 'Último uso/heartbeat do token.'
 COMMENT ON COLUMN agent_tokens.created_at IS 'Timestamp de criação.';
 COMMENT ON COLUMN agent_tokens.revoked_at IS 'Revogação do token.';
 
+-- Ingestion/Embedding Jobs
+COMMENT ON TABLE injection_jobs IS 'Fila de jobs de ingestão/embedding para o worker (vetorial).';
+COMMENT ON COLUMN injection_jobs.id IS 'UUID do job (PK).';
+COMMENT ON COLUMN injection_jobs.tenant_id IS 'FK para tenants.id (RLS por tenant).';
+COMMENT ON COLUMN injection_jobs.user_id IS 'Usuário que criou o job (opcional).';
+COMMENT ON COLUMN injection_jobs.source IS 'Origem do job: onboarding, manual, api.';
+COMMENT ON COLUMN injection_jobs.subject IS 'Assunto/contexto do job (ex.: wizard_profile).';
+COMMENT ON COLUMN injection_jobs.payload IS 'Dados brutos em JSONb (ex.: campos do wizard).';
+COMMENT ON COLUMN injection_jobs.input_text IS 'Texto consolidado e normalizado para gerar o embedding.';
+COMMENT ON COLUMN injection_jobs.idempotency_key IS 'Chave idempotente enviada pelo cliente para evitar duplicação (única por tenant+subject).';
+COMMENT ON COLUMN injection_jobs.content_hash IS 'Hash (sha256) do conteúdo de entrada; usado para deduplicação (único por tenant+subject+provider).';
+COMMENT ON COLUMN injection_jobs.embedding_provider IS 'Provedor de embedding a ser usado (openai, local, etc.).';
+COMMENT ON COLUMN injection_jobs.status IS 'Estado do job: pending, processing, completed, failed.';
+COMMENT ON COLUMN injection_jobs.priority IS 'Prioridade (1=alta .. 9=baixa).';
+COMMENT ON COLUMN injection_jobs.attempts IS 'Número de tentativas já realizadas.';
+COMMENT ON COLUMN injection_jobs.vector_store_key IS 'Identificador/Chave do registro no banco vetorial (opcional).';
+COMMENT ON COLUMN injection_jobs.last_error IS 'Mensagem de erro da última falha (se houver).';
+COMMENT ON COLUMN injection_jobs.started_at IS 'Quando o processamento do job iniciou.';
+COMMENT ON COLUMN injection_jobs.finished_at IS 'Quando o processamento do job finalizou.';
+COMMENT ON COLUMN injection_jobs.created_at IS 'Timestamp de criação do job.';
+COMMENT ON COLUMN injection_jobs.updated_at IS 'Última atualização do job.';
+
+-- Onboarding
+COMMENT ON TABLE onboarding_states IS 'Estado de onboarding por usuário (antes de possuir tenant).';
+COMMENT ON COLUMN onboarding_states.user_id IS 'FK para users.id (PK).';
+COMMENT ON COLUMN onboarding_states.current_step IS 'Passo atual do fluxo (ex.: workspace, country, ...).';
+COMMENT ON COLUMN onboarding_states.data IS 'Dados consolidados do onboarding (JSONb).';
+COMMENT ON COLUMN onboarding_states.completed IS 'Se true, onboarding concluído para o usuário.';
+COMMENT ON COLUMN onboarding_states.started_at IS 'Quando o onboarding foi iniciado.';
+COMMENT ON COLUMN onboarding_states.updated_at IS 'Última atualização/salvamento do onboarding.';
+
+-- Perfil do Tenant
+COMMENT ON TABLE tenant_profiles IS 'Perfil estendido do tenant (dados de empresa).';
+COMMENT ON COLUMN tenant_profiles.tenant_id IS 'FK para tenants.id (PK).';
+COMMENT ON COLUMN tenant_profiles.country IS 'País principal da operação.';
+COMMENT ON COLUMN tenant_profiles.company_name IS 'Nome legal/comercial da empresa.';
+COMMENT ON COLUMN tenant_profiles.segment IS 'Segmento principal.';
+COMMENT ON COLUMN tenant_profiles.segment_other IS 'Especificação quando segmento = Outro.';
+COMMENT ON COLUMN tenant_profiles.company_size IS 'Porte da empresa.';
+COMMENT ON COLUMN tenant_profiles.mission IS 'Missão da empresa (20–500 chars).';
+COMMENT ON COLUMN tenant_profiles.vision IS 'Visão da empresa (20–500 chars).';
+COMMENT ON COLUMN tenant_profiles.created_at IS 'Timestamp de criação do perfil.';
+COMMENT ON COLUMN tenant_profiles.updated_at IS 'Última atualização do perfil.';

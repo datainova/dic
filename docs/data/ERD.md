@@ -8,12 +8,14 @@ erDiagram
   TENANTS ||--o{ API_KEYS : has
   TENANTS ||--o{ AGENTS : has
   TENANTS ||--o{ AUDIT_LOGS : context
+  TENANTS ||--|| TENANT_PROFILES : has
 
   USERS ||--o{ IDENTITIES : has
   USERS ||--o{ USER_TENANTS : belongs
   USERS ||--o{ USER_ROLES : has
   USERS ||--o{ SESSIONS : opens
   USERS ||--o{ MFA_FACTORS : has
+  USERS ||--|| ONBOARDING_STATES : has
 
   ROLES ||--o{ ROLE_PERMISSIONS : maps
   PERMISSIONS ||--o{ ROLE_PERMISSIONS : maps
@@ -130,6 +132,27 @@ erDiagram
     timestamptz created_at
     timestamptz revoked_at
   }
+  INJECTION_JOBS {
+    uuid id PK
+    uuid tenant_id FK
+    uuid user_id FK
+    text source
+    text subject
+    jsonb payload
+    text input_text
+    text idempotency_key
+    text content_hash
+    text embedding_provider
+    text status
+    smallint priority
+    int attempts
+    text vector_store_key
+    text last_error
+    timestamptz started_at
+    timestamptz finished_at
+    timestamptz created_at
+    timestamptz updated_at
+  }
   AUDIT_LOGS {
     bigserial id PK
     uuid tenant_id
@@ -142,5 +165,24 @@ erDiagram
     jsonb metadata
     timestamptz created_at
   }
+  ONBOARDING_STATES {
+    uuid user_id PK FK
+    text current_step
+    jsonb data
+    boolean completed
+    timestamptz started_at
+    timestamptz updated_at
+  }
+  TENANT_PROFILES {
+    uuid tenant_id PK FK
+    text country
+    text company_name
+    text segment
+    text segment_other
+    text company_size
+    text mission
+    text vision
+    timestamptz created_at
+    timestamptz updated_at
+  }
 ```
-

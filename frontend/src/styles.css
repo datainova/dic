@@ -24,3 +24,71 @@ h1, h2, h3, .font-display { font-family: 'Exo 2', Inter, system-ui, -apple-syste
 .dark .bg-blob { opacity: .22; filter: blur(80px); }
 .dark .bg-blob.one { background: radial-gradient(60% 60% at 50% 50%, #5a534f 0%, transparent 70%); }
 .dark .bg-blob.two { background: radial-gradient(60% 60% at 50% 50%, #24211e 0%, transparent 70%); }
+
+/* Subtle grid texture for hero backgrounds */
+.bg-grid {
+  background-image:
+    radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px),
+    radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-size: 24px 24px, 24px 24px;
+  background-position: 0 0, 12px 12px;
+}
+
+/* Animated diagonal line for a gentle motion */
+.bg-line {
+  position: absolute;
+  left: -20%;
+  top: 10%;
+  width: 140%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  transform: rotate(-8deg);
+  animation: moveLine 4.5s linear infinite;
+  opacity: 0.4;
+}
+
+@keyframes moveLine {
+  0% { transform: translateX(-10%) rotate(-8deg); opacity: .1; }
+  50% { opacity: .4; }
+  100% { transform: translateX(10%) rotate(-8deg); opacity: .1; }
+}
+
+/* Aurora animated gradient */
+.bg-aurora {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(60% 60% at 10% 10%, rgba(255,255,255,0.08), transparent 70%),
+              radial-gradient(60% 60% at 90% 20%, rgba(255,255,255,0.06), transparent 70%),
+              linear-gradient(120deg, #2d2926 0%, #5a534f 40%, #24211e 100%);
+  mix-blend-mode: screen;
+  animation: auroraShift 16s ease-in-out infinite alternate;
+  opacity: .8;
+}
+
+@keyframes auroraShift {
+  0%   { filter: hue-rotate(0deg) blur(0.5px); transform: translateY(0); }
+  50%  { filter: hue-rotate(10deg) blur(0.6px); transform: translateY(-1.2%); }
+  100% { filter: hue-rotate(20deg) blur(0.8px); transform: translateY(0.8%); }
+}
+
+/* Vibrant variant — more motion and contrast */
+.hero-vibrant .bg-aurora {
+  opacity: 0.98;
+  animation: auroraShiftV 10s ease-in-out infinite alternate;
+}
+.hero-vibrant .bg-grid { opacity: 0.28; }
+.hero-vibrant .bg-line { opacity: 0.55; animation-duration: 3.2s; }
+.hero-vibrant .bg-line.alt { top: 45%; transform: rotate(-6deg); animation-duration: 5.2s; opacity: .38; }
+.hero-vibrant .bg-line.alt2 { top: 72%; transform: rotate(-12deg); animation-duration: 4.4s; opacity: .28; }
+
+@keyframes auroraShiftV {
+  0%   { filter: hue-rotate(0deg) blur(0.6px); transform: translateY(0) scale(1); }
+  50%  { filter: hue-rotate(25deg) blur(0.9px); transform: translateY(-1.6%) scale(1.01); }
+  100% { filter: hue-rotate(40deg) blur(1px); transform: translateY(1.2%) scale(1); }
+}
+
+/* Reduce motion: honor user preference */
+@media (prefers-reduced-motion: reduce) {
+  .bg-line, .bg-line.alt, .bg-line.alt2 { animation: none; opacity: 0.18; }
+  .bg-aurora { animation: none; opacity: 0.5; }
+}
