@@ -40,7 +40,7 @@ function useAuth() {
 
 function Header({ onSignOut }: { onSignOut(): void }){
   return (
-    <header className="w-full border-b border-white/10 bg-brand-900">
+    <header className="w-full border-b border-white/10 bg-brand-600">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 bg-white text-brand-600 px-3 py-1 rounded">Pular para conteúdo</a>
       <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -258,7 +258,7 @@ export default function App(){
   }, [])
 
   return (
-    <div className="min-h-screen bg-brand-900 relative overflow-hidden">
+    <div className="min-h-screen bg-brand-600 relative overflow-hidden">
       <div className="bg-blob one top-20 -left-16" />
       <div className="bg-blob two bottom-10 -right-16" />
       {isAuthed ? (
@@ -298,7 +298,7 @@ export default function App(){
                     </button>
                     <div className="relative">
                       <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"/></div>
-                      <div className="relative flex justify-center"><span className="bg-brand-900 px-2 text-xs text-white/60">ou</span></div>
+                      <div className="relative flex justify-center"><span className="bg-brand-600 px-2 text-xs text-white/60">ou</span></div>
                     </div>
                     <button onClick={startGenericSSO} className="w-full text-white hover:underline text-sm">Continuar com Single Sign‑On (SSO)</button>
                   </div>
