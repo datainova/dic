@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import Logo from './assets/logo.svg'
+import LogoLight from './image/black_icon_transparent_background.png'
+import LogoDark from './image/white_icon_transparent_background.png'
 
 function ThemeToggle(){
   const [theme, setTheme] = useState<string>(() => {
@@ -73,7 +74,8 @@ function Header({ onSignOut }: { onSignOut(): void }){
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 bg-slate-900 text-white px-3 py-1 rounded">Pular para conteúdo</a>
       <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <img src={Logo} alt="DataInova" className="h-7 w-7" />
+          <img src={LogoLight} alt="DataInova" className="h-7 w-7 block dark:hidden" />
+          <img src={LogoDark} alt="DataInova" className="h-7 w-7 hidden dark:block" />
           <span className="font-semibold tracking-tight text-slate-900 dark:text-slate-100">DataInova Connect</span>
         </div>
         <div className="flex items-center gap-3">
@@ -102,7 +104,8 @@ export default function App(){
   useMemo(() => { storeTokensFromHash() }, [])
   const { isAuthed, me, apiBase } = useAuth()
   const [email, setEmail] = useState('')
-  const [mode, setMode] = useState<'login'|'register'>('login')
+  // Login-first experience (no self-registration in UI)
+  const [mode] = useState<'login'|'register'>('login')
   const [message, setMessage] = useState('')
   const [profile, setProfile] = useState<any>(null)
   const [tenants, setTenants] = useState<any[]>([])
@@ -112,30 +115,35 @@ export default function App(){
   const [loginMode, setLoginMode] = useState<'link'|'password'>('link')
   const [showForgot, setShowForgot] = useState(false)
   const [resetToken, setResetToken] = useState<string | null>(null)
+  const redirectUri = typeof window !== 'undefined' ? `${location.origin}/auth/callback` : ''
+
+  function startGoogleSSO(){
+    window.location.href = `${apiBase}/auth/oauth/google/start?redirect=${encodeURIComponent(redirectUri)}`
+  }
+  function startGenericSSO(){
+    const emailParam = email ? `&email=${encodeURIComponent(email)}` : ''
+    window.location.href = `${apiBase}/auth/sso/start?redirect=${encodeURIComponent(redirectUri)}${emailParam}`
+  }
   const [password, setPassword] = useState('')
   const [pwdNew, setPwdNew] = useState('')
   const [pwdCurrent, setPwdCurrent] = useState('')
 
-  useEffect(() => {
-    // clear any previous state when switching mode
-    setMessage('')
-    setDevLink(null)
-  }, [mode])
+  // clear transient messages when type of auth changes
+  useEffect(() => { setMessage(''); setDevLink(null) }, [loginMode])
 
   async function submitEmail(e: React.FormEvent) {
     e.preventDefault()
     setMessage('')
     setLoading(true)
     try {
-      const endpoint = mode === 'register' ? '/auth/register' : '/auth/login-email'
-      const res = await fetch(`${apiBase}${endpoint}`, {
+      const res = await fetch(`${apiBase}/auth/login-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
       })
       const data = await res.json()
       if (res.ok) {
-        setMessage('Enviamos um link para seu e-mail. Você pode fechar esta janela e acessar pelo link enviado.')
+        setMessage('Enviamos um link de acesso para seu e-mail.')
         if (data.dev_link) setDevLink(data.dev_link)
       } else {
         setMessage(`Erro: ${data.error || 'Falha ao enviar link'}`)
@@ -304,17 +312,27 @@ export default function App(){
             </section>
             <section className="relative flex justify-center">
               <Card
-                title={mode==='register' ? 'Criar sua conta' : 'Entrar'}
-                subtitle={mode==='register' ? 'Informe seu e‑mail para receber um link de confirmação' : (loginMode==='password' ? 'Entre com seu e‑mail e senha' : 'Entre com um link enviado para o seu e‑mail')}
+                title={'Entrar'}
+                subtitle={loginMode==='password' ? 'Entre com seu e‑mail e senha' : 'Entre com um link enviado para o seu e‑mail'}
               >
-                <div className="inline-flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1 mb-5">
-                  <button onClick={() => setMode('register')} className={`text-sm px-3 py-1 rounded-md transition ${mode==='register' ? 'bg-white dark:bg-slate-700 shadow text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>Registrar</button>
-                  <button onClick={() => setMode('login')} className={`text-sm px-3 py-1 rounded-md transition ${mode==='login' ? 'bg-white dark:bg-slate-700 shadow text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>Entrar</button>
-                </div>
-                {mode==='login' && !resetToken && (
+                {!resetToken && (
                   <div className="flex gap-2 -mt-2 mb-4">
                     <button onClick={()=>setLoginMode('link')} className={`text-xs px-2 py-1 rounded ${loginMode==='link'?'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100':'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>Por link</button>
                     <button onClick={()=>setLoginMode('password')} className={`text-xs px-2 py-1 rounded ${loginMode==='password'?'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100':'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>Com senha</button>
+                  </div>
+                )}
+                {/* SSO buttons */}
+                {!resetToken && (
+                  <div className="space-y-3 mb-4">
+                    <button onClick={startGoogleSSO} className="w-full inline-flex items-center justify-center gap-2 rounded-full bg-[#1a73e8] text-white py-2.5 hover:bg-[#1669c1]">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="h-5 w-5"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12 c0-6.627,5.373-12,12-12c3.059,0,5.842,1.153,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24 s8.955,20,20,20s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,16.108,18.961,14,24,14c3.059,0,5.842,1.153,7.961,3.039l5.657-5.657 C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.197l-6.19-5.238C29.211,35.091,26.715,36,24,36 c-5.202,0-9.617-3.317-11.278-7.946l-6.523,5.025C9.577,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-3.987,5.565 c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.186,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
+                      Continuar com Google
+                    </button>
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200"/></div>
+                      <div className="relative flex justify-center"><span className="bg-white dark:bg-slate-900 px-2 text-xs text-slate-500">ou</span></div>
+                    </div>
+                    <button onClick={startGenericSSO} className="w-full text-brand-700 hover:underline text-sm">Continuar com Single Sign‑On (SSO)</button>
                   </div>
                 )}
                 {resetToken ? (
@@ -328,7 +346,7 @@ export default function App(){
                     <button disabled={loading} className="w-full rounded-lg bg-brand-600 text-white py-2.5 hover:bg-brand-700 disabled:opacity-60">Salvar nova senha</button>
                     <button type="button" onClick={()=>{ setResetToken(null); history.replaceState(null,'',location.pathname) }} className="w-full text-sm text-slate-600 dark:text-slate-300 mt-1 hover:underline">Cancelar</button>
                   </form>
-                ) : loginMode === 'password' && mode==='login' ? (
+                ) : loginMode === 'password' ? (
                   <form onSubmit={submitLoginPassword} className="space-y-4">
                     <label className="block text-sm">
                       <span className="text-slate-700 dark:text-slate-200">E‑mail</span>
@@ -343,9 +361,8 @@ export default function App(){
                     <button disabled={loading} type="submit" className="w-full rounded-lg bg-brand-600 text-white py-2.5 hover:bg-brand-700 disabled:opacity-60">
                       {loading ? 'Entrando…' : 'Entrar'}
                     </button>
-                    <div className="flex items-center justify-between text-xs mt-1">
+                    <div className="flex items-center justify-end text-xs mt-1">
                       <button type="button" onClick={()=>setShowForgot(true)} className="text-slate-600 dark:text-slate-300 hover:underline">Esqueci minha senha</button>
-                      <button type="button" onClick={()=>setMode('register')} className="text-slate-600 dark:text-slate-300 hover:underline">Criar conta</button>
                     </div>
                   </form>
                 ) : (
@@ -356,14 +373,11 @@ export default function App(){
                         className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
                     </label>
                     <button disabled={loading} type="submit" className="w-full rounded-lg bg-brand-600 text-white py-2.5 hover:bg-brand-700 disabled:opacity-60">
-                      {loading ? 'Enviando…' : (mode==='register' ? 'Enviar link de cadastro' : 'Enviar link de acesso')}
+                      {loading ? 'Enviando…' : 'Enviar link de acesso'}
                     </button>
-                    {mode==='login' && (
-                      <div className="flex items-center justify-between text-xs mt-1">
-                        <button type="button" onClick={()=>setShowForgot(true)} className="text-slate-600 dark:text-slate-300 hover:underline">Esqueci minha senha</button>
-                        <button type="button" onClick={()=>setMode('register')} className="text-slate-600 dark:text-slate-300 hover:underline">Criar conta</button>
-                      </div>
-                    )}
+                    <div className="flex items-center justify-end text-xs mt-1">
+                      <button type="button" onClick={()=>setShowForgot(true)} className="text-slate-600 dark:text-slate-300 hover:underline">Esqueci minha senha</button>
+                    </div>
                   </form>
                 )}
                 {showForgot && !resetToken && (

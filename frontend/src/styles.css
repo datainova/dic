@@ -6,7 +6,7 @@ html, body, #root { height: 100%; }
 body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 
 /* Selection color */
-::selection { background: #2d91ff22; }
+::selection { background: rgba(45,41,38,0.18); }
 
 /* Subtle animated gradient blob used behind the auth card */
 .bg-blob {
@@ -15,10 +15,10 @@ body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvet
   opacity: .35;
   pointer-events: none;
 }
-.bg-blob.one { width: 420px; height: 420px; background: radial-gradient(60% 60% at 50% 50%, #2d91ff 0%, transparent 70%); }
-.bg-blob.two { width: 360px; height: 360px; background: radial-gradient(60% 60% at 50% 50%, #a855f7 0%, transparent 70%); }
+.bg-blob.one { width: 420px; height: 420px; background: radial-gradient(60% 60% at 50% 50%, #2d2926 0%, transparent 70%); }
+.bg-blob.two { width: 360px; height: 360px; background: radial-gradient(60% 60% at 50% 50%, #9d9691 0%, transparent 70%); }
 
 /* Dark theme adjustments for decorative blobs */
 .dark .bg-blob { opacity: .22; filter: blur(80px); }
-.dark .bg-blob.one { background: radial-gradient(60% 60% at 50% 50%, #60a5fa 0%, transparent 70%); }
-.dark .bg-blob.two { background: radial-gradient(60% 60% at 50% 50%, #7c3aed 0%, transparent 70%); }
+.dark .bg-blob.one { background: radial-gradient(60% 60% at 50% 50%, #5a534f 0%, transparent 70%); }
+.dark .bg-blob.two { background: radial-gradient(60% 60% at 50% 50%, #24211e 0%, transparent 70%); }
