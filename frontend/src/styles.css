@@ -3,4 +3,17 @@
 @tailwind utilities;
 
 html, body, #root { height: 100%; }
-body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial }
+body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+/* Selection color */
+::selection { background: #2d91ff22; }
+
+/* Subtle animated gradient blob used behind the auth card */
+.bg-blob {
+  position: absolute;
+  filter: blur(60px);
+  opacity: .35;
+  pointer-events: none;
+}
+.bg-blob.one { width: 420px; height: 420px; background: radial-gradient(60% 60% at 50% 50%, #2d91ff 0%, transparent 70%); }
+.bg-blob.two { width: 360px; height: 360px; background: radial-gradient(60% 60% at 50% 50%, #a855f7 0%, transparent 70%); }
