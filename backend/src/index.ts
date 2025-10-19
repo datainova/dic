@@ -66,7 +66,7 @@ async function ensurePermissions(client: any) {
 
 async function ensureDefaultRoles(client: any, tenantId: string) {
   // Ensure all following operations run under the tenant RLS context
-  await client.query('SET app.current_tenant = $1', [tenantId])
+  await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId])
   const templates: Record<string, { name: string; perms: string[] | 'ALL' }> = {
     owner: { name: 'Owner', perms: 'ALL' },
     admin: { name: 'Admin', perms: ['kpi:read', 'kpi:write', 'user:invite', 'user:manage'] },
@@ -144,7 +144,7 @@ app.get('/health', (_, res) => res.json({ status: 'ok' }))
 app.post('/auth/register', async (req, res) => {
   const email = (req.body?.email || '').toString().trim().toLowerCase()
   if (!email) return res.status(400).json({ error: 'EMAIL_REQUIRED' })
-  if (!pool.options.connectionString) return res.status(500).json({ error: 'DB_NOT_CONFIGURED' })
+  if (!process.env.DATABASE_URL) return res.status(500).json({ error: 'DB_NOT_CONFIGURED' })
 
   const client = await pool.connect()
   try {
@@ -245,7 +245,7 @@ app.get('/auth/verify-email', async (req, res) => {
     await client.query('BEGIN')
     const { email, user_id: userId, tenant_id: tenantId } = payload
     // Set RLS context for tenant-scoped tables
-    await client.query('SET app.current_tenant = $1', [tenantId])
+    await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId])
     // activate user
     await client.query(`UPDATE users SET is_active = true WHERE id = $1`, [userId])
     // ensure identity (local, provider_uid=email)
@@ -277,7 +277,7 @@ app.get('/auth/verify-email', async (req, res) => {
 app.post('/auth/login-email', async (req, res) => {
   const email = (req.body?.email || '').toString().trim().toLowerCase()
   if (!email) return res.status(400).json({ error: 'EMAIL_REQUIRED' })
-  if (!pool.options.connectionString) return res.status(500).json({ error: 'DB_NOT_CONFIGURED' })
+  if (!process.env.DATABASE_URL) return res.status(500).json({ error: 'DB_NOT_CONFIGURED' })
   const client = await pool.connect()
   try {
     const u = await client.query(`SELECT id FROM users WHERE email = $1`, [email])
@@ -317,7 +317,7 @@ app.get('/me', async (req, res) => {
   const { sub: userId, ten: tenantId } = payload
   const client = await pool.connect()
   try {
-    await client.query('SET app.current_tenant = $1', [tenantId])
+    await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId])
     const u = await client.query(`SELECT id, email, name, is_active, created_at FROM users WHERE id = $1`, [userId])
     const t = await client.query(`SELECT id, slug, name, plan, status FROM tenants WHERE id = $1`, [tenantId])
     const r = await client.query(
