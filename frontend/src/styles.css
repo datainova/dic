@@ -3,7 +3,9 @@
 @tailwind utilities;
 
 html, body, #root { height: 100%; }
+/* Body uses Inter; headings use Exo 2 (brand). If Jaapokki is added later, override via .font-display */
 body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+h1, h2, h3, .font-display { font-family: 'Exo 2', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; letter-spacing: -0.01em; }
 
 /* Selection color */
 ::selection { background: rgba(45,41,38,0.18); }

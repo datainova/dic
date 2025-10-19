@@ -1,36 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import LogoLight from './image/black_icon_transparent_background.png'
-import LogoDark from './image/white_icon_transparent_background.png'
+import LogoWhite from './image/white_icon_transparent_background.png'
 
-function ThemeToggle(){
-  const [theme, setTheme] = useState<string>(() => {
-    try {
-      const t = localStorage.getItem('theme')
-      if (t) return t
-      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-    } catch { return 'light' }
-  })
-  useEffect(() => {
-    try {
-      if (theme === 'dark') document.documentElement.classList.add('dark')
-      else document.documentElement.classList.remove('dark')
-      localStorage.setItem('theme', theme)
-    } catch {}
-  }, [theme])
-  return (
-    <button
-      aria-label={theme==='dark' ? 'Alternar para tema claro' : 'Alternar para tema escuro'}
-      className="h-8 w-8 grid place-items-center rounded-md border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-    >
-      {theme === 'dark' ? (
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 18a6 6 0 100-12 6 6 0 000 12z"/><path fillRule="evenodd" d="M12 2.25a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V3A.75.75 0 0112 2.25zm0 15.75a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V18.75a.75.75 0 01.75-.75zm9-6a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5H20.25a.75.75 0 01.75.75zM6 12a.75.75 0 01-.75.75H3.75a.75.75 0 010-1.5H5.25A.75.75 0 016 12zm12.728 6.728a.75.75 0 01-1.06 0l-1.06-1.06a.75.75 0 011.06-1.06l1.06 1.06a.75.75 0 010 1.06zM7.392 7.392a.75.75 0 01-1.06 0l-1.06-1.06a.75.75 0 011.06-1.06l1.06 1.06a.75.75 0 010 1.06zm0 9.216a.75.75 0 010 1.06l-1.06 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zM18.728 5.272a.75.75 0 010 1.06l-1.06 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0z" clipRule="evenodd"/></svg>
-      ) : (
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M21.752 15.002A9.718 9.718 0 0112.002 22C6.201 22 1.5 17.299 1.5 11.498 1.5 6.78 4.66 2.85 8.85 1.65a.75.75 0 01.89 1.03A8.25 8.25 0 0018.32 17.26a.75.75 0 011.03.89 9.59 9.59 0 01.401-3.148z"/></svg>
-      )}
-    </button>
-  )
-}
 
 function parseHash() {
   const h = (typeof window !== 'undefined' && window.location.hash) || ''
@@ -70,17 +40,15 @@ function useAuth() {
 
 function Header({ onSignOut }: { onSignOut(): void }){
   return (
-    <header className="w-full border-b border-slate-200 bg-white/70 dark:bg-slate-900/70 backdrop-blur supports-[backdrop-filter]:bg-white/50 dark:supports-[backdrop-filter]:bg-slate-900/50">
-      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 bg-slate-900 text-white px-3 py-1 rounded">Pular para conteúdo</a>
+    <header className="w-full border-b border-white/10 bg-brand-900">
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 bg-white text-brand-600 px-3 py-1 rounded">Pular para conteúdo</a>
       <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <img src={LogoLight} alt="DataInova" className="h-7 w-7 block dark:hidden" />
-          <img src={LogoDark} alt="DataInova" className="h-7 w-7 hidden dark:block" />
-          <span className="font-semibold tracking-tight text-slate-900 dark:text-slate-100">DataInova Connect</span>
+          <img src={LogoWhite} alt="DataInova" className="h-7 w-7" />
+          <span className="font-semibold tracking-tight text-white font-display">DataInova Connect</span>
         </div>
         <div className="flex items-center gap-3">
-          <ThemeToggle />
-          <button onClick={onSignOut} className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white">Sair</button>
+          <button onClick={onSignOut} className="text-sm text-white/80 hover:text-white">Sair</button>
         </div>
       </div>
     </header>
@@ -89,10 +57,10 @@ function Header({ onSignOut }: { onSignOut(): void }){
 
 function Card({ children, title, subtitle }: { children: React.ReactNode; title: string; subtitle?: string }){
   return (
-    <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl ring-1 ring-black/5 dark:ring-white/10 p-6 md:p-7">
+    <div className="w-full max-w-md bg-transparent rounded-2xl shadow-xl ring-1 ring-white/10 p-6 md:p-7">
       <div className="mb-5">
-        <h2 className="text-[20px] md:text-[22px] font-semibold text-slate-900 dark:text-slate-100 tracking-tight">{title}</h2>
-        {subtitle && <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 leading-relaxed">{subtitle}</p>}
+        <h2 className="text-[22px] font-semibold text-white tracking-tight font-display">{title}</h2>
+        {subtitle && <p className="text-white/70 text-sm mt-1 leading-relaxed">{subtitle}</p>}
       </div>
       {children}
     </div>
@@ -290,7 +258,7 @@ export default function App(){
   }, [])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-950 dark:to-slate-900 relative overflow-hidden">
+    <div className="min-h-screen bg-brand-900 relative overflow-hidden">
       <div className="bg-blob one top-20 -left-16" />
       <div className="bg-blob two bottom-10 -right-16" />
       {isAuthed ? (
@@ -329,80 +297,80 @@ export default function App(){
                       Continuar com Google
                     </button>
                     <div className="relative">
-                      <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200"/></div>
-                      <div className="relative flex justify-center"><span className="bg-white dark:bg-slate-900 px-2 text-xs text-slate-500">ou</span></div>
+                      <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"/></div>
+                      <div className="relative flex justify-center"><span className="bg-brand-900 px-2 text-xs text-white/60">ou</span></div>
                     </div>
-                    <button onClick={startGenericSSO} className="w-full text-brand-700 hover:underline text-sm">Continuar com Single Sign‑On (SSO)</button>
+                    <button onClick={startGenericSSO} className="w-full text-white hover:underline text-sm">Continuar com Single Sign‑On (SSO)</button>
                   </div>
                 )}
                 {resetToken ? (
                   <form onSubmit={submitDoReset} className="space-y-4">
-                    <p className="text-sm text-slate-600 dark:text-slate-300">Defina sua nova senha.</p>
+                    <p className="text-sm text-white/80">Defina sua nova senha.</p>
                     <label className="block text-sm">
-                      <span className="text-slate-700 dark:text-slate-200">Nova senha</span>
+                      <span className="text-white">Nova senha</span>
                       <input value={pwdNew} onChange={e=>setPwdNew(e.target.value)} type="password" required placeholder="mínimo 8 caracteres"
-                        className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                        className="mt-1 w-full rounded-lg border border-white/0 bg-white text-brand-600 px-3 py-2 outline-none focus:ring-2 focus:ring-white"/>
                     </label>
-                    <button disabled={loading} className="w-full rounded-lg bg-brand-600 text-white py-2.5 hover:bg-brand-700 disabled:opacity-60">Salvar nova senha</button>
-                    <button type="button" onClick={()=>{ setResetToken(null); history.replaceState(null,'',location.pathname) }} className="w-full text-sm text-slate-600 dark:text-slate-300 mt-1 hover:underline">Cancelar</button>
+                    <button disabled={loading} className="w-full rounded-lg bg-white text-brand-600 py-2.5 hover:bg-white/90 disabled:opacity-60">Salvar nova senha</button>
+                    <button type="button" onClick={()=>{ setResetToken(null); history.replaceState(null,'',location.pathname) }} className="w-full text-sm text-white/80 mt-1 hover:underline">Cancelar</button>
                   </form>
                 ) : loginMode === 'password' ? (
                   <form onSubmit={submitLoginPassword} className="space-y-4">
                     <label className="block text-sm">
-                      <span className="text-slate-700 dark:text-slate-200">E‑mail</span>
+                      <span className="text-white">E‑mail</span>
                       <input value={email} onChange={e=>setEmail(e.target.value)} type="email" required placeholder="voce@empresa.com"
-                        className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                        className="mt-1 w-full rounded-lg border border-white/0 bg-white text-brand-600 px-3 py-2 outline-none focus:ring-2 focus:ring-white"/>
                     </label>
                     <label className="block text-sm">
-                      <span className="text-slate-700 dark:text-slate-200">Senha</span>
+                      <span className="text-white">Senha</span>
                       <input value={password} onChange={e=>setPassword(e.target.value)} type="password" required placeholder="Sua senha"
-                        className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                        className="mt-1 w-full rounded-lg border border-white/0 bg-white text-brand-600 px-3 py-2 outline-none focus:ring-2 focus:ring-white"/>
                     </label>
-                    <button disabled={loading} type="submit" className="w-full rounded-lg bg-brand-600 text-white py-2.5 hover:bg-brand-700 disabled:opacity-60">
+                    <button disabled={loading} type="submit" className="w-full rounded-lg bg-white text-brand-600 py-2.5 hover:bg-white/90 disabled:opacity-60">
                       {loading ? 'Entrando…' : 'Entrar'}
                     </button>
                     <div className="flex items-center justify-end text-xs mt-1">
-                      <button type="button" onClick={()=>setShowForgot(true)} className="text-slate-600 dark:text-slate-300 hover:underline">Esqueci minha senha</button>
+                      <button type="button" onClick={()=>setShowForgot(true)} className="text-white/80 hover:underline">Esqueci minha senha</button>
                     </div>
                   </form>
                 ) : (
                   <form onSubmit={submitEmail} className="space-y-4">
                     <label className="block text-sm">
-                      <span className="text-slate-700 dark:text-slate-200">E‑mail</span>
+                      <span className="text-white">E‑mail</span>
                       <input value={email} onChange={e=>setEmail(e.target.value)} type="email" required placeholder="voce@empresa.com"
-                        className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                        className="mt-1 w-full rounded-lg border border-white/0 bg-white text-brand-600 px-3 py-2 outline-none focus:ring-2 focus:ring-white"/>
                     </label>
-                    <button disabled={loading} type="submit" className="w-full rounded-lg bg-brand-600 text-white py-2.5 hover:bg-brand-700 disabled:opacity-60">
+                    <button disabled={loading} type="submit" className="w-full rounded-lg bg-white text-brand-600 py-2.5 hover:bg-white/90 disabled:opacity-60">
                       {loading ? 'Enviando…' : 'Enviar link de acesso'}
                     </button>
                     <div className="flex items-center justify-end text-xs mt-1">
-                      <button type="button" onClick={()=>setShowForgot(true)} className="text-slate-600 dark:text-slate-300 hover:underline">Esqueci minha senha</button>
+                      <button type="button" onClick={()=>setShowForgot(true)} className="text-white/80 hover:underline">Esqueci minha senha</button>
                     </div>
                   </form>
                 )}
                 {showForgot && !resetToken && (
-                  <div className="mt-4 border-t pt-4 border-slate-200 dark:border-slate-800">
-                    <h3 className="font-medium text-sm text-slate-900 dark:text-slate-100 mb-1">Recuperar senha</h3>
+                  <div className="mt-4 border-t pt-4 border-white/10">
+                    <h3 className="font-medium text-sm text-white mb-1">Recuperar senha</h3>
                     <form onSubmit={submitForgot} className="space-y-3">
                       <label className="block text-sm">
-                        <span className="text-slate-700 dark:text-slate-200">E‑mail</span>
+                        <span className="text-white">E‑mail</span>
                         <input value={email} onChange={e=>setEmail(e.target.value)} type="email" required placeholder="voce@empresa.com"
-                          className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                          className="mt-1 w-full rounded-lg border border-white/0 bg-white text-brand-600 px-3 py-2 outline-none focus:ring-2 focus:ring-white"/>
                       </label>
                       <div className="flex items-center gap-2">
-                        <button disabled={loading} className="rounded-md bg-brand-600 text-white px-4 py-2 hover:bg-brand-700 disabled:opacity-60">Enviar link</button>
-                        <button type="button" onClick={()=>setShowForgot(false)} className="text-sm text-slate-600 dark:text-slate-300 hover:underline">Cancelar</button>
+                        <button disabled={loading} className="rounded-md bg-white text-brand-600 px-4 py-2 hover:bg-white/90 disabled:opacity-60">Enviar link</button>
+                        <button type="button" onClick={()=>setShowForgot(false)} className="text-sm text-white/80 hover:underline">Cancelar</button>
                       </div>
                     </form>
                   </div>
                 )}
-                {message && <p className="text-sm text-slate-600 mt-4" aria-live="polite">{message}</p>}
+                {message && <p className="text-sm text-white/80 mt-4" aria-live="polite">{message}</p>}
                 {devLink && (
-                  <a className="mt-3 inline-flex items-center text-sm text-brand-700 hover:underline" href={devLink}>
+                  <a className="mt-3 inline-flex items-center text-sm text-white hover:underline" href={devLink}>
                     Abrir link de desenvolvimento
                   </a>
                 )}
-                <p className="mt-6 text-[12px] text-slate-500">Ao continuar você concorda com nossos Termos e Política de Privacidade.</p>
+                <p className="mt-6 text-[12px] text-white/60">Ao continuar você concorda com nossos Termos e Política de Privacidade.</p>
               </Card>
             </section>
           </div>
@@ -450,42 +418,42 @@ export default function App(){
                 </form>
               </div>
             )}
-            <div className="mt-6 bg-white rounded-xl shadow ring-1 ring-black/5 p-4 max-w-md">
+            <div className="mt-6 bg-transparent rounded-xl shadow ring-1 ring-white/10 p-4 max-w-md text-white">
               <h3 className="font-medium mb-2">Definir/alterar senha</h3>
               <form onSubmit={submitSetPassword} className="space-y-3">
                 <label className="block text-sm">
-                  <span className="text-slate-700">Senha atual (opcional)</span>
+                  <span className="text-white">Senha atual (opcional)</span>
                   <input value={pwdCurrent} onChange={e=>setPwdCurrent(e.target.value)} type="password" placeholder="••••••••"
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                    className="mt-1 w-full rounded-md border border-white/0 bg-white text-brand-600 px-3 py-2 outline-none focus:ring-2 focus:ring-white"/>
                 </label>
                 <label className="block text-sm">
-                  <span className="text-slate-700">Nova senha</span>
+                  <span className="text-white">Nova senha</span>
                   <input value={pwdNew} onChange={e=>setPwdNew(e.target.value)} type="password" required placeholder="mínimo 8 caracteres"
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-400"/>
+                    className="mt-1 w-full rounded-md border border-white/0 bg-white text-brand-600 px-3 py-2 outline-none focus:ring-2 focus:ring-white"/>
                 </label>
-                <button disabled={loading} className="rounded-md bg-brand-600 text-white px-4 py-2 hover:bg-brand-700 disabled:opacity-60">Salvar senha</button>
+                <button disabled={loading} className="rounded-md bg-white text-brand-600 px-4 py-2 hover:bg-white/90 disabled:opacity-60">Salvar senha</button>
               </form>
             </div>
             {profile && (
-              <div className="mt-6 grid md:grid-cols-2 gap-4">
-                <div className="bg-white rounded-xl shadow ring-1 ring-black/5 p-4">
+              <div className="mt-6 grid md:grid-cols-2 gap-4 text-white">
+                <div className="bg-transparent rounded-xl shadow ring-1 ring-white/10 p-4">
                   <h3 className="font-medium mb-2">Usuário</h3>
-                  <pre className="text-xs bg-slate-50 p-2 rounded overflow-auto">{JSON.stringify(profile.user, null, 2)}</pre>
+                  <pre className="text-xs bg-white/5 p-2 rounded overflow-auto">{JSON.stringify(profile.user, null, 2)}</pre>
                 </div>
-                <div className="bg-white rounded-xl shadow ring-1 ring-black/5 p-4">
+                <div className="bg-transparent rounded-xl shadow ring-1 ring-white/10 p-4">
                   <h3 className="font-medium mb-2">Tenant</h3>
-                  <pre className="text-xs bg-slate-50 p-2 rounded overflow-auto">{JSON.stringify(profile.tenant, null, 2)}</pre>
+                  <pre className="text-xs bg-white/5 p-2 rounded overflow-auto">{JSON.stringify(profile.tenant, null, 2)}</pre>
                 </div>
-                <div className="bg-white rounded-xl shadow ring-1 ring-black/5 p-4 md:col-span-2">
+                <div className="bg-transparent rounded-xl shadow ring-1 ring-white/10 p-4 md:col-span-2">
                   <h3 className="font-medium mb-2">Roles</h3>
-                  <pre className="text-xs bg-slate-50 p-2 rounded overflow-auto">{JSON.stringify(profile.roles, null, 2)}</pre>
+                  <pre className="text-xs bg-white/5 p-2 rounded overflow-auto">{JSON.stringify(profile.roles, null, 2)}</pre>
                 </div>
               </div>
             )}
           </div>
         )}
       </main>
-      <footer className="py-8 text-center text-xs text-slate-500">© {new Date().getFullYear()} DataInova</footer>
+      <footer className="py-8 text-center text-xs text-white/50">© {new Date().getFullYear()} DataInova</footer>
     </div>
   )
 }

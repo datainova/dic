@@ -17,6 +17,7 @@ Implementação no frontend (Tailwind)
   - Acentos/links: `text-brand-700 hover:underline`
   - Foco: `focus:ring-brand-400`
 - O modo escuro (`dark`) está habilitado e ajusta cores/contraste automaticamente.
+ - Plano de fundo: gradiente sutil `bg-gradient-to-b from-brand-50 via-white to-white` já aplicado no wrapper principal.
 
 Ícones e logotipo
 - Diretório: `frontend/src/image`
@@ -30,4 +31,7 @@ Boas práticas
 - Mantenha contraste adequado (WCAG AA): texto claro sobre `brand-600` e texto escuro sobre fundo claro.
 - Evite misturar tonalidades fora da paleta a não ser que haja necessidade funcional (ex.: Google SSO mantém a cor da marca Google).
 - Para novos componentes, prefira a escala `brand` definida para consistência.
-
+- Tipografia
+  - Títulos: "Exo 2" (Google Fonts) — já incluído em `frontend/index.html`.
+  - Corpo: Inter.
+  - Display opcional: "Jaapokki" (não incluída; requer arquivo/licença). Para ativar, adicione os arquivos `.woff2` e a regra `@font-face`, então defina `.font-display { font-family: 'Jaapokki', 'Exo 2', Inter, ... }`.
