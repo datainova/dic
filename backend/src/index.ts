@@ -266,6 +266,15 @@ async function issueSessionAndTokens(client: any, userId: string, tenantId?: str
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
 
+// SMTP quick check (dev helper): GET /debug/send-test-email?to=
+app.get('/debug/send-test-email', async (req, res) => {
+  const to = (req.query.to as string) || ''
+  if (!to) return res.status(400).json({ error: 'TO_REQUIRED' })
+  const link = `http://localhost:${process.env.PORT || 4000}/health`
+  const r = await sendEmailLink(to, link)
+  return res.json(r)
+})
+
 // Registration: email-only -> sends verification link
 app.post('/auth/register', async (req, res) => {
   const email = (req.body?.email || '').toString().trim().toLowerCase()
@@ -294,10 +303,13 @@ app.post('/auth/register', async (req, res) => {
   if (redirect) link.searchParams.set('redirect', `${redirect.origin}/auth/callback`)
 
     await client.query('COMMIT')
-    await sendEmailLink(email, link.toString())
-
-    const body: any = { ok: true }
+    const sent = await sendEmailLink(email, link.toString())
+    if (!sent.ok) {
+      console.error('sendEmailLink failed:', sent)
+    }
+    const body: any = { ok: true, email_sent: sent.ok }
     if (process.env.NODE_ENV !== 'production') body.dev_link = link.toString()
+    if (!sent.ok) body.hint = 'EMAIL_DELIVERY_FAILED'
     return res.json(body)
   } catch (e: any) {
     await client.query('ROLLBACK')
@@ -471,8 +483,9 @@ app.post('/auth/login-email', async (req, res) => {
     link.searchParams.set('token', token)
     const redirect = process.env.WEBAPP_BASE_URL ? new URL(process.env.WEBAPP_BASE_URL) : null
     if (redirect) link.searchParams.set('redirect', `${redirect.origin}/auth/callback`)
-    await sendEmailLink(email, link.toString())
-    const body: any = { ok: true }
+    const sent = await sendEmailLink(email, link.toString())
+    if (!sent.ok) console.error('sendEmailLink (login-email) failed:', sent)
+    const body: any = { ok: true, email_sent: sent.ok }
     if (process.env.NODE_ENV !== 'production') body.dev_link = link.toString()
     return res.json(body)
   } catch (e) {
