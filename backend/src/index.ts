@@ -20,8 +20,10 @@ app.use((req, res, next) => {
   next()
 })
 
-// Database
-const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+// Database (enable SSL automatically for cloud providers like Aiven)
+const connStr = process.env.DATABASE_URL
+const useSSL = (process.env.DATABASE_SSL === 'true') || (process.env.PGSSLMODE === 'require') || (connStr?.includes('aivencloud.com') ?? false)
+const pool = new Pool({ connectionString: connStr, ssl: useSSL ? { rejectUnauthorized: false } : undefined })
 
 // JWT utils (RS256 if configured, otherwise HS256 dev secret)
 const hasRSKeys = !!(process.env.JWT_PRIVATE_KEY && process.env.JWT_PUBLIC_KEY)
@@ -63,6 +65,8 @@ async function ensurePermissions(client: any) {
 }
 
 async function ensureDefaultRoles(client: any, tenantId: string) {
+  // Ensure all following operations run under the tenant RLS context
+  await client.query('SET app.current_tenant = $1', [tenantId])
   const templates: Record<string, { name: string; perms: string[] | 'ALL' }> = {
     owner: { name: 'Owner', perms: 'ALL' },
     admin: { name: 'Admin', perms: ['kpi:read', 'kpi:write', 'user:invite', 'user:manage'] },
@@ -240,6 +244,8 @@ app.get('/auth/verify-email', async (req, res) => {
   try {
     await client.query('BEGIN')
     const { email, user_id: userId, tenant_id: tenantId } = payload
+    // Set RLS context for tenant-scoped tables
+    await client.query('SET app.current_tenant = $1', [tenantId])
     // activate user
     await client.query(`UPDATE users SET is_active = true WHERE id = $1`, [userId])
     // ensure identity (local, provider_uid=email)

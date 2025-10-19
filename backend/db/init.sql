@@ -128,16 +128,17 @@ CREATE TABLE mfa_factors (
 -- Auditoria e Segurança
 -- =========================
 CREATE TABLE login_attempts (
-  id bigserial PRIMARY KEY,
+  id bigserial,
   email citext,
   user_id uuid,
   ip inet,
   result text NOT NULL CHECK (result IN ('success','invalid_credentials','locked','mfa_required')),
   created_at timestamptz NOT NULL DEFAULT now()
 ) PARTITION BY RANGE (created_at);
+ALTER TABLE login_attempts ADD PRIMARY KEY (id, created_at);
 
 CREATE TABLE audit_logs (
-  id bigserial PRIMARY KEY,
+  id bigserial,
   tenant_id uuid,
   actor_user_id uuid,
   action text NOT NULL,
@@ -148,6 +149,7 @@ CREATE TABLE audit_logs (
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 ) PARTITION BY RANGE (created_at);
+ALTER TABLE audit_logs ADD PRIMARY KEY (id, created_at);
 
 -- =========================
 -- Integrações e Agentes
@@ -246,4 +248,3 @@ BEGIN
 END $$;
 
 -- Fim do init
-

@@ -23,7 +23,8 @@ if (!DATABASE_URL) {
   process.exit(1)
 }
 
-const pool = new Pool({ connectionString: DATABASE_URL })
+const useSSL = (process.env.DATABASE_SSL === 'true') || (process.env.PGSSLMODE === 'require') || (DATABASE_URL?.includes('aivencloud.com'))
+const pool = new Pool({ connectionString: DATABASE_URL, ssl: useSSL ? { rejectUnauthorized: false } : undefined })
 
 const PERMISSIONS = [
   { code: 'kpi:read', description: 'Ler indicadores' },
@@ -208,8 +209,10 @@ async function main() {
 
     const outputs = []
 
-    for (const t of TENANTS) {
-      const tenant = await upsertTenant(client, t)
+  for (const t of TENANTS) {
+    const tenant = await upsertTenant(client, t)
+      // Set RLS tenant context for tenant-scoped tables
+      await client.query('SET app.current_tenant = $1', [tenant.id])
       const roleIds = await upsertRoles(client, tenant.id, permMap)
 
       // Users for this tenant
@@ -269,4 +272,3 @@ async function main() {
 }
 
 main()
-
