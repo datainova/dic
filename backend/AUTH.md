@@ -33,6 +33,15 @@ Endpoints
   - Ações: cria tenant Free com slug único, provisiona roles padrão, vincula usuário como owner e retorna novos tokens já ligados ao tenant.
   - Response 201: { tenant_id, tokens: { access_token, refresh_token, expires_in } }
 
+- GET /my/tenants (protegido)
+  - Lista todos os tenants nos quais o usuário participa.
+  - Response 200: { tenants: [{ id, slug, name, plan, status, membership_status, current }] }
+
+- POST /auth/switch-tenant (protegido)
+  - Body: { tenant_id?: uuid, slug?: string } (um dos dois é obrigatório)
+  - Ações: valida membership e status=active, seta GUC e emite novos tokens atrelados ao tenant.
+  - Response 200: { access_token, refresh_token, expires_in }
+
 - POST /auth/set-password (protegido)
   - Body: { password: string, current_password?: string }
   - Se o usuário já tiver senha, exige current_password.

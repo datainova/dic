@@ -312,6 +312,75 @@ app.get('/me', async (req, res) => {
   }
 })
 
+// List user's tenants
+app.get('/my/tenants', async (req, res) => {
+  const auth = (req.headers['authorization'] || '').toString()
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+  if (!token) return res.status(401).json({ error: 'NO_TOKEN' })
+  let payload: any
+  try { payload = verifyJWT(token) } catch { return res.status(401).json({ error: 'TOKEN_INVALID' }) }
+  const userId: string = payload.sub
+  const currentTen: string | undefined = payload.ten
+  const client = await pool.connect()
+  try {
+    const q = await client.query(
+      `SELECT t.id, t.slug, t.name, t.plan, t.status, ut.status as membership_status
+       FROM user_tenants ut
+       JOIN tenants t ON t.id = ut.tenant_id
+       WHERE ut.user_id = $1
+       ORDER BY t.created_at ASC`,
+      [userId]
+    )
+    const list = q.rows.map((r: any) => ({ ...r, current: currentTen ? r.id === currentTen : false }))
+    return res.json({ tenants: list })
+  } catch (e) {
+    console.error('list-tenants error', e)
+    return res.status(500).json({ error: 'LIST_TENANTS_FAILED' })
+  } finally {
+    client.release()
+  }
+})
+
+// Switch active tenant (issues new tokens tied to chosen tenant)
+app.post('/auth/switch-tenant', async (req, res) => {
+  const auth = (req.headers['authorization'] || '').toString()
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+  if (!token) return res.status(401).json({ error: 'NO_TOKEN' })
+  let payload: any
+  try { payload = verifyJWT(token) } catch { return res.status(401).json({ error: 'TOKEN_INVALID' }) }
+  const userId: string = payload.sub
+  const { tenant_id, slug } = (req.body || {}) as { tenant_id?: string; slug?: string }
+  if (!tenant_id && !slug) return res.status(400).json({ error: 'TENANT_ID_OR_SLUG_REQUIRED' })
+  const client = await pool.connect()
+  try {
+    let tenantId: string | null = null
+    if (tenant_id) {
+      const q = await client.query(
+        `SELECT t.id FROM user_tenants ut JOIN tenants t ON t.id = ut.tenant_id
+         WHERE ut.user_id = $1 AND t.id = $2 AND t.status = 'active'`,
+        [userId, tenant_id]
+      )
+      if (q.rowCount) tenantId = q.rows[0].id
+    } else if (slug) {
+      const q = await client.query(
+        `SELECT t.id FROM user_tenants ut JOIN tenants t ON t.id = ut.tenant_id
+         WHERE ut.user_id = $1 AND t.slug = $2 AND t.status = 'active'`,
+        [userId, slug]
+      )
+      if (q.rowCount) tenantId = q.rows[0].id
+    }
+    if (!tenantId) return res.status(404).json({ error: 'TENANT_NOT_FOUND_OR_INACTIVE' })
+
+    await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId])
+    const tokens = await issueSessionAndTokens(client, userId, tenantId)
+    return res.json(tokens)
+  } catch (e) {
+    console.error('switch-tenant error', e)
+    return res.status(500).json({ error: 'SWITCH_TENANT_FAILED' })
+  } finally {
+    client.release()
+  }
+})
 // Create tenant after verification (user chooses a name)
 // Body: { name: string, slug?: string }
 app.post('/tenants', async (req, res) => {

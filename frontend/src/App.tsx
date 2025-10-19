@@ -70,6 +70,8 @@ export default function App(){
   const [mode, setMode] = useState<'login'|'register'>('register')
   const [message, setMessage] = useState('')
   const [profile, setProfile] = useState<any>(null)
+  const [tenants, setTenants] = useState<any[]>([])
+  const [showSwitch, setShowSwitch] = useState(false)
   const [loading, setLoading] = useState(false)
   const [devLink, setDevLink] = useState<string | null>(null)
   const [loginMode, setLoginMode] = useState<'link'|'password'>('link')
@@ -150,6 +152,36 @@ export default function App(){
   async function loadProfile() {
     const p = await me()
     setProfile(p)
+  }
+
+  async function loadTenants() {
+    const token = localStorage.getItem('access_token')
+    if (!token) return
+    const res = await fetch(`${apiBase}/my/tenants`, { headers: { Authorization: `Bearer ${token}` } })
+    if (res.ok) {
+      const data = await res.json()
+      setTenants(data.tenants || [])
+    }
+  }
+
+  async function switchTenant(id: string) {
+    const token = localStorage.getItem('access_token')
+    if (!token) return
+    const res = await fetch(`${apiBase}/auth/switch-tenant`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ tenant_id: id })
+    })
+    const data = await res.json().catch(()=>({}))
+    if (res.ok) {
+      localStorage.setItem('access_token', data.access_token)
+      localStorage.setItem('refresh_token', data.refresh_token)
+      setMessage('Espaço alternado com sucesso.')
+      setShowSwitch(false)
+      await loadProfile()
+    } else {
+      setMessage(`Erro: ${data.error || 'Falha ao alternar espaço'}`)
+    }
   }
 
   async function createTenant(e: React.FormEvent) {
@@ -239,8 +271,28 @@ export default function App(){
             </div>
             <div className="flex items-center gap-3">
               <button onClick={loadProfile} className="rounded-md bg-slate-900 text-white px-4 py-2 hover:bg-slate-800">Carregar perfil</button>
+              <button onClick={() => { setShowSwitch(v=>!v); loadTenants() }} className="rounded-md border border-slate-300 px-4 py-2 text-slate-700 hover:bg-slate-50">Meus espaços</button>
               <button onClick={() => { localStorage.clear(); location.href = '/' }} className="rounded-md border border-slate-300 px-4 py-2 text-slate-700 hover:bg-slate-50">Sair</button>
             </div>
+            {showSwitch && (
+              <div className="mt-4 bg-white rounded-xl shadow ring-1 ring-black/5 p-4 max-w-xl">
+                <h3 className="font-medium mb-2">Meus espaços</h3>
+                {tenants.length === 0 && <p className="text-sm text-slate-600">Você ainda não participa de nenhum espaço.</p>}
+                <ul className="divide-y divide-slate-200">
+                  {tenants.map(t => (
+                    <li key={t.id} className="py-2 flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{t.name}</div>
+                        <div className="text-xs text-slate-500">{t.slug} • {t.plan} • {t.status}{t.current ? ' • atual' : ''}</div>
+                      </div>
+                      {!t.current && (
+                        <button onClick={()=>switchTenant(t.id)} className="text-sm rounded-md bg-brand-600 text-white px-3 py-1 hover:bg-brand-700">Alternar</button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {!profile?.tenant && (
               <div className="mt-6 bg-white rounded-xl shadow ring-1 ring-black/5 p-4 max-w-md">
                 <h3 className="font-medium mb-2">Criar seu espaço de trabalho</h3>
